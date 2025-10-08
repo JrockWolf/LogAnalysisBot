@@ -54,4 +54,3 @@ Notes
 Security and ethics
 - Avoid uploading real sensitive logs to third-party APIs. Use synthetic or sanitized logs for experimentation.
 
-# LogAnalysisBot
