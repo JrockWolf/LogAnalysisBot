@@ -1,21 +1,60 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Log Analysis Helper</title>
-    <link rel="stylesheet" href="/static/style.css">
-  </head>
-  <body>
-    <div class="container">
-      <h1>Log Analysis Helper</h1>
-      <form action="/analyze" method="post" enctype="multipart/form-data">
-        <label for="upload">Upload a log file</label>
-        <input type="file" name="upload" id="upload">
-        <p>or paste log lines below:</p>
-        <textarea name="pasted" rows="12" cols="80" placeholder="Paste logs here..."></textarea>
-        <br>
-        <button type="submit">Analyze</button>
-      </form>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Log Analysis Helper</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Log Analysis Helper</h1>
+    <p class="subtitle">
+      Upload a log file or paste log lines. We auto-detect gzip/zip and common encodings.
+    </p>
+
+    <!-- Two-column grid -->
+    <div class="grid-results">
+      <!-- LEFT COLUMN: Upload -->
+      <div>
+        <h2>Upload Log File</h2>
+        <form id="uploadForm" action="/analyze" method="post" enctype="multipart/form-data" style="margin-bottom:12px">
+          <label class="meta" for="upload">Select a file:</label><br/>
+          <input type="file" name="upload" id="upload" accept=".log,.txt,.json,.csv,.gz,.zip" class="file-input" />
+          <div class="actions" style="margin-top:10px;">
+            <button type="submit">Analyze</button>
+            <button type="button" class="secondary" onclick="document.getElementById('upload').value=''">Clear</button>
+          </div>
+        </form>
+        <p class="meta">Tip: You can also drag and drop a file anywhere on the page to analyze it automatically.</p>
+      </div>
+
+      <!-- RIGHT COLUMN: Paste -->
+      <div>
+        <h2>Paste Log Text</h2>
+        <form id="pasteForm" action="/analyze" method="post">
+          <textarea name="pasted" rows="12" placeholder="Paste logs here..."></textarea>
+          <div class="actions">
+            <button type="submit">Analyze</button>
+            <button type="button" class="secondary" onclick="document.querySelector('[name=pasted]').value=''">Clear</button>
+          </div>
+        </form>
+      </div>
     </div>
-  </body>
-  </html>
+  </div>
+
+  <script>
+    // Drag & drop anywhere → feeds file input and submits upload form
+    const uploadForm = document.getElementById('uploadForm');
+    window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
+    window.addEventListener('dragleave', e => { document.body.classList.remove('dragging'); });
+    window.addEventListener('drop', e => {
+      e.preventDefault(); document.body.classList.remove('dragging');
+      if (!e.dataTransfer.files?.length) return;
+      const input = uploadForm.querySelector('input[type=file]');
+      input.files = e.dataTransfer.files;
+      uploadForm.submit();
+    });
+  </script>
+</body>
+</html>

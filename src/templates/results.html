@@ -1,32 +1,85 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8">
-    <title>Analysis Results</title>
-    <link rel="stylesheet" href="/static/style.css">
-  </head>
-  <body>
-    <div class="container">
-      <h1>Analysis Results <span class="badge">Provider: {{ llm_provider or 'none' }}</span></h1>
-      <p class="subtitle">Automated findings derived from heuristic checks and LLM-enhanced summarization.</p>
-      <h2>Findings</h2>
-        <ul>
-        {% for f in findings %}
-          <li class="finding">{{ f }}</li>
-        {% endfor %}
-        </ul>
-  <!-- analysis dict intentionally hidden in UI; logs contain details when needed -->
-        {% if llm_text %}
-        <li class="finding"><strong>LLM response ({{ llm_provider or 'unspecified' }}):</strong>
-          <pre>{{ llm_text }}</pre>
-        </li>
-        {% endif %}
-        {% if decode_warning %}
-          <div class="warning">Warning: {{ decode_warning }}</div>
-        {% endif %}
-        <h2>Raw</h2>
-        <pre>{{ raw }}</pre>
-      <a href="/">Analyze another</a>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Analysis Results</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header row -->
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+      <h1 style="margin:0">Analysis Results</h1>
+      <span class="badge">Provider: {{ llm_provider or 'none' }}</span>
     </div>
-  </body>
-  </html>
+    <p class="subtitle">Automated findings derived from heuristic checks and LLM-enhanced summarization.</p>
+
+    <!-- Two-column layout -->
+    <div class="grid-results">
+      <!-- LEFT COLUMN -->
+      <div>
+        <h2>Findings</h2>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <button class="secondary" data-copy="findingsList" onclick="copyText('findingsList')">Copy</button>
+          <button onclick="downloadText('findings.txt', document.getElementById('findingsList').innerText)">Download</button>
+        </div>
+        {% if findings and findings|length %}
+          <ul id="findingsList">
+            {% for f in findings %}
+              <li class="finding">{{ f }}</li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="meta">No findings produced.</p>
+        {% endif %}
+
+        {% if llm_text %}
+          <h2>LLM Summary</h2>
+          <div style="display:flex;gap:8px;margin-bottom:8px;">
+            <button class="secondary" data-copy="llmText" onclick="copyText('llmText')">Copy</button>
+          </div>
+          <pre id="llmText">{{ llm_text }}</pre>
+        {% endif %}
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div class="section">
+        {% if decode_warning %}
+          <div class="warning" style="margin:0 0 12px;">Warning: {{ decode_warning }}</div>
+        {% endif %}
+
+        <h2>Raw</h2>
+        <div style="display:flex;gap:8px;margin-bottom:8px;">
+          <button class="secondary" onclick="toggle('rawBlock')">Show / Hide</button>
+          <button onclick="downloadText('raw.log', document.getElementById('rawBlock').innerText)">Download</button>
+        </div>
+        <pre id="rawBlock" class="hidden">{{ raw }}</pre>
+
+        <a class="footer-link" href="/" style="display:inline-block;margin-top:14px;">← Analyze another</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function copyText(id) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const text = el.innerText || el.value || '';
+      navigator.clipboard.writeText(text);
+      const btn = document.querySelector(`[data-copy="${id}"]`);
+      if (btn) { const t=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=t, 900); }
+    }
+    function downloadText(filename, text) {
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
+      URL.revokeObjectURL(url);
+    }
+    function toggle(id) {
+      const el = document.getElementById(id);
+      if (el) el.classList.toggle('hidden');
+    }
+  </script>
+</body>
+</html>
