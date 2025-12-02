@@ -24,7 +24,7 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", {"request": request, "error": None})
 
 
 @app.post("/analyze", response_class=HTMLResponse)
@@ -34,6 +34,16 @@ async def analyze(request: Request, pasted: str = Form(""), upload: UploadFile |
     Will attempt gzip/zip detection and try UTF-8, UTF-16, CP1252, Latin-1 decodings.
     If decoding required a fallback, pass a warning to the template.
     """
+    # Check if user provided any log data
+    if (not upload or not upload.filename) and not pasted.strip():
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "error": "Please provide log data by either uploading a file or pasting log text."
+            }
+        )
+    
     decode_warning = None
     raw_text = None
 

@@ -12,6 +12,12 @@
     <p class="subtitle">
       Upload a log file or paste log lines. We auto-detect gzip/zip and common encodings.
     </p>
+    
+    {% if error %}
+    <div class="error-message" style="background-color: #fee; border: 1px solid #c33; color: #c33; padding: 12px; border-radius: 4px; margin-bottom: 20px;">
+      <strong>Error:</strong> {{ error }}
+    </div>
+    {% endif %}
 
     <!-- Two-column grid -->
     <div class="grid-results">
