@@ -11,9 +11,23 @@
     <!-- Header row -->
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
       <h1 style="margin:0">Analysis Results</h1>
-      <span class="badge">Provider: {{ llm_provider or 'none' }}</span>
+      <span class="badge">Used: {{ llm_provider_display }}</span>
+      <span class="badge badge-alt">Requested: {{ requested_provider_display }}</span>
+      {% if model_used %}
+        <span class="badge">Model: {{ model_used }}</span>
+      {% endif %}
+      {% if requested_model and requested_provider == 'gemini' and requested_model != model_used %}
+        <span class="badge badge-alt">Requested Model: {{ requested_model }}</span>
+      {% endif %}
     </div>
     <p class="subtitle">Automated findings derived from heuristic checks and LLM-enhanced summarization.</p>
+
+    {% if token_usage %}
+    <div class="token-usage">
+      <h2>Token Usage</h2>
+      <p class="meta">Prompt: {{ token_usage.prompt }} &nbsp;•&nbsp; Completion: {{ token_usage.completion }} &nbsp;•&nbsp; Total: {{ token_usage.total }}</p>
+    </div>
+    {% endif %}
 
     <!-- Two-column layout -->
     <div class="grid-results">

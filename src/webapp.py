@@ -6,9 +6,26 @@ from pathlib import Path
 from .analyzer import analyze_logs_with_llm, heuristic_detect
 from .parsers import parse_text_log
 import tempfile
-import json
 import logging
 import os
+
+SUPPORTED_PROVIDERS = [
+    ("auto", "Automatic (use environment or supplied key)"),
+    ("openai", "OpenAI"),
+    ("perplexity", "Perplexity"),
+    ("gemini", "Gemini"),
+    ("deepseek", "DeepSeek"),
+    ("transformers", "Local transformers (no key required)"),
+]
+
+PROVIDER_LABELS = {value: label for value, label in SUPPORTED_PROVIDERS}
+
+
+def _provider_display(value: str | None) -> str:
+    if not value:
+        return "None"
+    key = value.lower()
+    return PROVIDER_LABELS.get(key, value)
 
 logger = logging.getLogger("logbot.webapp")
 if not logger.handlers:
@@ -23,24 +40,69 @@ app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")
 
 
 @app.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request, "error": None})
+def index(request: Request, provider: str | None = None, model: str | None = None):
+    selected = (provider or "auto").strip().lower() or "auto"
+    if selected not in PROVIDER_LABELS:
+        selected = "auto"
+    raw_model_pref = (model or "").strip()
+    model_pref = raw_model_pref if selected == "gemini" else ""
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "error": None,
+            "providers": SUPPORTED_PROVIDERS,
+            "selected_provider": selected,
+            "selected_model": model_pref,
+        },
+    )
 
 
 @app.post("/analyze", response_class=HTMLResponse)
-async def analyze(request: Request, pasted: str = Form(""), upload: UploadFile | None = File(None)):
+async def analyze(
+    request: Request,
+    pasted: str = Form(""),
+    upload: UploadFile | None = File(None),
+    provider: str = Form("auto"),
+    api_key: str = Form(""),
+    model: str = Form(""),
+):
     """Analyze uploaded or pasted logs with best-effort decoding and decompression.
 
     Will attempt gzip/zip detection and try UTF-8, UTF-16, CP1252, Latin-1 decodings.
     If decoding required a fallback, pass a warning to the template.
     """
     # Check if user provided any log data
+    selected_provider = (provider or "auto").strip().lower() or "auto"
+    if selected_provider not in PROVIDER_LABELS:
+        selected_provider = "auto"
+    provided_key = (api_key or "").strip()
+    model_hint = (model or "").strip()
+
+    if selected_provider == "gemini" and not provided_key:
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "error": "Gemini requests require an API key. Please provide your Gemini key to continue.",
+                "providers": SUPPORTED_PROVIDERS,
+                "selected_provider": selected_provider,
+                "selected_model": model_hint,
+            },
+        )
+
+    if selected_provider != "gemini":
+        model_hint = ""
+
     if (not upload or not upload.filename) and not pasted.strip():
         return templates.TemplateResponse(
             "index.html",
             {
                 "request": request,
-                "error": "Please provide log data by either uploading a file or pasting log text."
+                "error": "Please provide log data by either uploading a file or pasting log text.",
+                "providers": SUPPORTED_PROVIDERS,
+                "selected_provider": selected_provider,
+                "selected_model": model_hint,
             }
         )
     
@@ -140,7 +202,12 @@ async def analyze(request: Request, pasted: str = Form(""), upload: UploadFile |
     # Run analysis for both upload and pasted text paths. Ensure analysis is defined
     # even if LLM fails, so the template can render heuristics and any error notes.
     try:
-        analysis = analyze_logs_with_llm(path)
+        analysis = analyze_logs_with_llm(
+            path,
+            provider=selected_provider,
+            api_key=provided_key or None,
+            model=model_hint or None,
+        )
     except Exception as e:
         logger.exception("Analysis failed: %s", e)
         analysis = {"findings": [f"(Error) analysis failed: {e}"], "llm_text": None, "llm_provider": None}
@@ -154,6 +221,10 @@ async def analyze(request: Request, pasted: str = Form(""), upload: UploadFile |
     findings = analysis.get("findings", [])
     llm_text = analysis.get("llm_text")
     llm_provider = analysis.get("llm_provider")
+    requested_provider = analysis.get("requested_provider") or selected_provider
+    requested_model = analysis.get("requested_model") or model_hint or None
+    model_used = analysis.get("model_used")
+    token_usage = analysis.get("token_usage")
     return templates.TemplateResponse(
         "results.html",
         {
@@ -163,6 +234,12 @@ async def analyze(request: Request, pasted: str = Form(""), upload: UploadFile |
             "decode_warning": decode_warning,
             "llm_text": llm_text,
             "llm_provider": llm_provider,
+            "llm_provider_display": _provider_display(llm_provider),
+            "requested_provider_display": _provider_display(requested_provider),
+            "requested_provider": requested_provider,
+            "requested_model": requested_model,
+            "model_used": model_used,
+            "token_usage": token_usage,
             "analysis": analysis,
         },
     )

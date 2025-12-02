@@ -27,6 +27,24 @@
         <form id="uploadForm" action="/analyze" method="post" enctype="multipart/form-data" style="margin-bottom:12px">
           <label class="meta" for="upload">Select a file:</label><br/>
           <input type="file" name="upload" id="upload" accept=".log,.txt,.json,.csv,.gz,.zip" class="file-input" />
+          <div class="form-field">
+            <label class="meta" for="provider-upload">LLM provider</label>
+            <select name="provider" id="provider-upload">
+              {% for value, label in providers %}
+                <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
+            <label class="meta" for="model-upload">Gemini model</label>
+            <input type="text" name="model" id="model-upload" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            <p class="meta">Specify a Gemini model (leave blank to use the default).</p>
+          </div>
+          <div class="form-field">
+            <label class="meta" for="api-key-upload">API key</label>
+            <input type="password" name="api_key" id="api-key-upload" placeholder="Enter provider key" autocomplete="off" />
+            <p class="meta">Key is used only for this request and is not stored.</p>
+          </div>
           <div class="actions" style="margin-top:10px;">
             <button type="submit">Analyze</button>
             <button type="button" class="secondary" onclick="document.getElementById('upload').value=''">Clear</button>
@@ -40,6 +58,24 @@
         <h2>Paste Log Text</h2>
         <form id="pasteForm" action="/analyze" method="post">
           <textarea name="pasted" rows="12" placeholder="Paste logs here..."></textarea>
+          <div class="form-field">
+            <label class="meta" for="provider-paste">LLM provider</label>
+            <select name="provider" id="provider-paste">
+              {% for value, label in providers %}
+                <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
+            <label class="meta" for="model-paste">Gemini model</label>
+            <input type="text" name="model" id="model-paste" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            <p class="meta">Specify a Gemini model (leave blank to use the default).</p>
+          </div>
+          <div class="form-field">
+            <label class="meta" for="api-key-paste">API key</label>
+            <input type="password" name="api_key" id="api-key-paste" placeholder="Enter provider key" autocomplete="off" />
+            <p class="meta">Key is used only for this request and is not stored.</p>
+          </div>
           <div class="actions">
             <button type="submit">Analyze</button>
             <button type="button" class="secondary" onclick="document.querySelector('[name=pasted]').value=''">Clear</button>
@@ -61,6 +97,66 @@
       input.files = e.dataTransfer.files;
       uploadForm.submit();
     });
+
+    // Keep provider selectors in sync across forms
+    const providerSelectors = document.querySelectorAll('select[name="provider"]');
+    providerSelectors.forEach(sel => {
+      sel.addEventListener('change', () => {
+        providerSelectors.forEach(other => {
+          if (other !== sel) {
+            other.value = sel.value;
+          }
+        });
+        updateModelVisibility(sel.value);
+      });
+    });
+
+    // Mirror API key fields so users can switch forms without retyping
+    const keyInputs = document.querySelectorAll('input[name="api_key"]');
+    keyInputs.forEach(input => {
+      input.addEventListener('input', () => {
+        keyInputs.forEach(other => {
+          if (other !== input) {
+            other.value = input.value;
+          }
+        });
+      });
+    });
+
+    // Sync model fields between forms
+    const modelInputs = document.querySelectorAll('input[name="model"]');
+    const modelGroups = document.querySelectorAll('.model-field');
+    modelInputs.forEach(input => {
+      input.addEventListener('input', () => {
+        modelInputs.forEach(other => {
+          if (other !== input) {
+            other.value = input.value;
+          }
+        });
+      });
+    });
+
+    function updateModelVisibility(providerValue) {
+      const show = (providerValue || '').toLowerCase() === 'gemini';
+      modelGroups.forEach(group => {
+        const input = group.querySelector('input[name="model"]');
+        if (show) {
+          group.classList.remove('hidden');
+          if (input) {
+            input.disabled = false;
+          }
+        } else {
+          group.classList.add('hidden');
+          if (input) {
+            input.disabled = true;
+          }
+        }
+      });
+    }
+
+    if (providerSelectors.length) {
+      updateModelVisibility(providerSelectors[0].value);
+    }
   </script>
 </body>
 </html>

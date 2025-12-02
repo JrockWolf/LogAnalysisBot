@@ -76,6 +76,35 @@ input[type="file"] {
   color: var(--muted);
 }
 
+select,
+input[type="password"],
+input[type="text"] {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  background: #0b0b0f;
+  color: #e8e8ff;
+  margin-top: 6px;
+}
+
+.form-field {
+  margin: 16px 0 0;
+}
+
+.form-field label {
+  display: block;
+  margin-bottom: 4px;
+}
+
+.token-usage {
+  margin-top: 18px;
+  padding: 12px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(20, 12, 32, 0.6);
+}
+
 /* Buttons */
 button {
   padding: 10px 16px;
@@ -129,6 +158,11 @@ ul {
   margin-left: 12px;
   font-size: 13px;
   box-shadow: 0 4px 18px rgba(140, 85, 255, 0.12);
+}
+
+.badge.badge-alt {
+  background: linear-gradient(90deg, #0b1f2b, #0f2d40);
+  color: #60a5fa;
 }
 
 .warning {

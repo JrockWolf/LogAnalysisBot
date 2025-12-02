@@ -1,7 +1,7 @@
 from pathlib import Path
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def _ts(t: datetime):
     return t.strftime("%b %d %H:%M:%S")
@@ -11,7 +11,7 @@ def generate_samples(out: Path, seed: int = None):
     """Generate a single text log with multiple events."""
     if seed is not None:
         random.seed(seed)
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     lines = []
     # multiple failed SSH attempts from same IP
     ip = f"192.0.2.{random.randint(2,250)}"
