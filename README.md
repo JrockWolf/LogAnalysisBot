@@ -8,6 +8,7 @@ Features:
 - LLM adapter for OpenAI (if API key provided) and HuggingFace fallback
 - Analyzer that uses prompt templates to extract actionable events and generate plain-language summaries
 - Evaluation harness for precision/recall/F1
+- **NEW: Multi-language translator** - Translate log analysis results into Spanish, French, German, Chinese, Japanese, and more
 
 Quickstart
 1. Create and activate a Python 3.8+ virtual environment.
@@ -34,6 +35,21 @@ export HF_MODEL="gpt2"
 python -m src.cli generate --out samples --count 1
 python -m src.cli analyze samples/sample_1.log
 ```
+
+5. **NEW: Translate analysis results**:
+
+```bash
+# Translate to Spanish
+python -m src.cli translate-analysis samples/sample_1.log --lang es
+
+# Translate to French and save to file
+python -m src.cli translate-analysis samples/sample_1.log --lang fr --output results_fr.json
+
+# List all supported languages
+python -m src.cli list-languages
+```
+
+See [docs/TRANSLATOR.md](docs/TRANSLATOR.md) for complete translation features documentation.
 
 Run tests:
 
