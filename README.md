@@ -1,16 +1,22 @@
 # Log Analysis Helper Bot
 
-This project provides a reproducible scaffold for building an LLM-powered log analysis assistant for security education and small SOCs.
+An LLM-powered log analysis assistant for security education and small SOCs, with built-in support for the **CIC-IDS2017** intrusion detection dataset and **MITRE ATT&CK** technique mapping.
 
-Features:
-- Parsers for text, JSON and CSV logs
+## Features
+
+- **CIC-IDS2017 Dataset Support** — Load, parse, and analyze the Canadian Institute for Cybersecurity IDS 2017 dataset (network flow CSVs with 78+ features)
+- **MITRE ATT&CK Mapping** — Automatically map detected attacks to MITRE ATT&CK techniques with IDs, tactics, and reference URLs
+- **Network Attack Detection** — Heuristic-based detection for DDoS, DoS, brute force, port scanning, web attacks, bot activity, and infiltration
+- **Evaluation Pipeline** — Binary and per-class metrics (precision, recall, F1, accuracy, FPR), confusion matrices, and formatted reports
+- Parsers for text, JSON, CSV, and CIC-IDS2017 network flow logs
 - Simulated log generator with common security events
-- LLM adapter for OpenAI (if API key provided) and HuggingFace fallback
-- Analyzer that uses prompt templates to extract actionable events and generate plain-language summaries
-- Evaluation harness for precision/recall/F1
-- **NEW: Multi-language translator** - Translate log analysis results into Spanish, French, German, Chinese, Japanese, and more
+- LLM adapter for OpenAI, Perplexity, Gemini, Deepseek, and HuggingFace local models
+- Analyzer with deterministic heuristics and optional LLM-enhanced summaries
+- Multi-language translator for analysis results (Spanish, French, German, Chinese, Japanese, and more)
+- Web UI (FastAPI) and CLI (Typer) interfaces
 
-Quickstart
+## Quickstart
+
 1. Create and activate a Python 3.8+ virtual environment.
 2. Install dependencies:
 
@@ -21,52 +27,109 @@ python -m pip install -r requirements.txt
 3. (Optional) Configure an LLM provider key or use a local HuggingFace model:
 
 ```bash
-# OpenAI key (if you have one):
 export OPENAI_API_KEY="sk-..."
-# Perplexity.ai keys are supported; set PERPLEXITY_API_KEY (keys often start with 'pplx-'):
 export PERPLEXITY_API_KEY="pplx-..."
-# or set HF_MODEL env var to use a local transformers model (defaults to gpt2)
+export GEMINI_API_KEY="..."
+export DEEPSEEK_API_KEY="..."
+# or use a local transformers model (defaults to gpt2)
 export HF_MODEL="gpt2"
 ```
 
-4. Generate a sample log and analyze it:
+## Usage
+
+### Analyze a log file
 
 ```bash
-python -m src.cli generate --out samples --count 1
 python -m src.cli analyze samples/sample_1.log
 ```
 
-5. **NEW: Translate analysis results**:
+### Analyze with MITRE ATT&CK mapping
 
 ```bash
-# Translate to Spanish
+python -m src.cli analyze samples/cicids2017_sample.csv --mitre
+```
+
+### Evaluate detection on CIC-IDS2017 dataset
+
+```bash
+python -m src.cli evaluate samples/cicids2017_sample.csv
+python -m src.cli evaluate samples/cicids2017_sample.csv --output results.json
+```
+
+### Dataset info
+
+```bash
+python -m src.cli dataset-info samples/cicids2017_sample.csv
+```
+
+### Generate synthetic logs
+
+```bash
+python -m src.cli generate --out samples --count 5
+```
+
+### Translate analysis results
+
+```bash
 python -m src.cli translate-analysis samples/sample_1.log --lang es
-
-# Translate to French and save to file
-python -m src.cli translate-analysis samples/sample_1.log --lang fr --output results_fr.json
-
-# List all supported languages
 python -m src.cli list-languages
 ```
 
-See [docs/TRANSLATOR.md](docs/TRANSLATOR.md) for complete translation features documentation.
+### Web UI
 
-Run tests:
+```bash
+python -m src.webapp
+```
+
+See [docs/TRANSLATOR.md](docs/TRANSLATOR.md) for translation documentation.
+
+## CIC-IDS2017 Dataset
+
+The project supports the [CIC-IDS2017](https://www.unb.ca/cic/datasets/ids-2017.html) dataset from the Canadian Institute for Cybersecurity. This dataset contains labeled network traffic flows with 78 features covering:
+
+| Category | Attack Types |
+|---|---|
+| Brute Force | FTP-Patator, SSH-Patator |
+| DoS | Hulk, Slowloris, Slowhttptest, GoldenEye |
+| DDoS | Distributed Denial of Service |
+| Web Attacks | Brute Force, XSS, SQL Injection |
+| Reconnaissance | Port Scanning |
+| Botnet | Bot traffic |
+| Infiltration | Infiltration attacks |
+
+Sample extracts are included in `samples/` for testing without the full dataset (~885 MB).
+
+## Architecture
+
+```
+src/
+├── cli.py              # Typer CLI (analyze, evaluate, dataset-info, generate, translate)
+├── webapp.py           # FastAPI web interface
+├── parsers.py          # Log parsers (text, JSON, CSV, CIC-IDS2017)
+├── analyzer.py         # Heuristic + LLM analysis pipeline
+├── dataset_loader.py   # CIC-IDS2017 CSV loader and label normalization
+├── mitre_mapping.py    # MITRE ATT&CK technique mapping
+├── eval.py             # Evaluation metrics (binary, per-class, confusion matrix)
+├── llm_adapter.py      # Multi-provider LLM interface
+├── generator.py        # Synthetic log generator
+└── translator.py       # Multi-language translation
+```
+
+## Running Tests
 
 ```bash
 python -m pytest -q
 ```
 
-Notes
- - Provider detection and precedence:
-	 - If `PERPLEXITY_API_KEY` is set the adapter will attempt to call Perplexity's API.
-	 - If `GEMINI_API_KEY` is set the adapter will attempt to call Gemini (best-effort wrapper).
-	 - If `DEEPSEEK_API_KEY` is set the adapter will attempt to call Deepseek (best-effort wrapper).
-	 - If `OPENAI_API_KEY` is set and looks like an OpenAI key the adapter will use OpenAI.
-	 - If `OPENAI_API_KEY` accidentally contains a Perplexity key (starts with `pplx-`) the adapter will not call OpenAI and will instead prefer Perplexity (if provided) or fall back to the local HF model.
-	 - You can force a provider by setting `LLM_PROVIDER` to `openai`, `perplexity` or `transformers`.
-- The analyzer includes deterministic heuristics so it can produce findings without an LLM; LLM enhances summaries when available.
+64 tests covering dataset loading, parsing, MITRE mapping, network attack detection, evaluation metrics, translation, and integration.
 
-Security and ethics
+## Notes
+
+- Provider detection precedence: Perplexity → Gemini → Deepseek → OpenAI → HuggingFace local. Force a provider with `LLM_PROVIDER=openai|perplexity|transformers`.
+- The analyzer produces findings via deterministic heuristics without an LLM; LLM enhances summaries when available.
+- CIC-IDS2017 CSV files are auto-detected by column headers — no special flags needed.
+
+## Security and Ethics
+
 - Avoid uploading real sensitive logs to third-party APIs. Use synthetic or sanitized logs for experimentation.
 

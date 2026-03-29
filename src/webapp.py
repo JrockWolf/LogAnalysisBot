@@ -4,7 +4,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from .analyzer import analyze_logs_with_llm, heuristic_detect
-from .parsers import parse_text_log
+from .parsers import parse_text_log, is_cicids_csv
+from .mitre_mapping import enrich_findings_with_mitre
 import tempfile
 import logging
 import os
@@ -225,6 +226,20 @@ async def analyze(
     requested_model = analysis.get("requested_model") or model_hint or None
     model_used = analysis.get("model_used")
     token_usage = analysis.get("token_usage")
+
+    # MITRE ATT&CK enrichment
+    mitre_mappings = enrich_findings_with_mitre(findings)
+
+    # Dataset summary (if CIC-IDS2017 CSV was uploaded)
+    dataset_summary = None
+    if is_cicids_csv(path):
+        try:
+            from .dataset_loader import load_cicids_csv, dataset_summary as ds_summary
+            _, rows = load_cicids_csv(path, max_rows=10000)
+            dataset_summary = ds_summary(rows)
+        except Exception:
+            pass
+
     return templates.TemplateResponse(
         "results.html",
         {
@@ -241,5 +256,7 @@ async def analyze(
             "model_used": model_used,
             "token_usage": token_usage,
             "analysis": analysis,
+            "mitre_mappings": mitre_mappings,
+            "dataset_summary": dataset_summary,
         },
     )

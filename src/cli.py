@@ -2,8 +2,9 @@ import typer
 from pathlib import Path
 from dotenv import load_dotenv
 from .generator import generate_samples
-from .analyzer import analyze_logs
+from .analyzer import analyze_logs, analyze_dataset
 from .translator import Translator
+from .mitre_mapping import enrich_findings_with_mitre
 import json
 
 # load .env from project root automatically when CLI runs
@@ -23,11 +24,68 @@ def generate(out: Path = typer.Option(Path("./samples"), help="Output folder for
 
 
 @app.command()
-def analyze(path: Path = typer.Argument(..., help="Path to log file")):
+def analyze(
+    path: Path = typer.Argument(..., help="Path to log file"),
+    mitre: bool = typer.Option(False, "--mitre", "-m", help="Include MITRE ATT&CK mappings"),
+):
     """Analyze a log file and print findings."""
     findings = analyze_logs(path)
     for f in findings:
         typer.echo(f"- {f}")
+
+    if mitre:
+        enriched = enrich_findings_with_mitre(findings)
+        typer.echo("\nMITRE ATT&CK Mappings:")
+        typer.echo("=" * 50)
+        for entry in enriched:
+            techniques = entry.get("mitre_techniques", [])
+            if techniques:
+                typer.echo(f"\n  {entry['finding']}")
+                for t in techniques:
+                    typer.echo(f"    -> {t['technique_id']} - {t['name']} ({t['tactic']})")
+
+
+@app.command()
+def evaluate(
+    path: Path = typer.Argument(..., help="Path to CIC-IDS2017 CSV sample file"),
+    output: Path = typer.Option(None, "--output", "-o", help="Save JSON results to file"),
+):
+    """Evaluate detection performance against a labeled CIC-IDS2017 dataset sample."""
+    from .eval import evaluate_dataset, format_evaluation_report
+
+    typer.echo(f"Evaluating: {path}")
+    results = evaluate_dataset(path)
+    report = format_evaluation_report(results)
+    typer.echo(report)
+
+    if output:
+        # Save JSON (exclude non-serializable items)
+        with open(output, "w", encoding="utf-8") as f:
+            json.dump(results, f, indent=2, default=str)
+        typer.echo(f"\nResults saved to: {output}")
+
+
+@app.command("dataset-info")
+def dataset_info(
+    path: Path = typer.Argument(..., help="Path to CIC-IDS2017 CSV file"),
+    max_rows: int = typer.Option(10000, "--max-rows", "-n", help="Max rows to read"),
+):
+    """Show summary of a CIC-IDS2017 dataset CSV file."""
+    from .dataset_loader import load_cicids_csv, dataset_summary
+
+    typer.echo(f"Loading: {path}")
+    headers, rows = load_cicids_csv(path, max_rows=max_rows)
+    summary = dataset_summary(rows)
+
+    typer.echo(f"\nTotal flows: {summary['total_flows']}")
+    typer.echo(f"Benign:      {summary['benign']}")
+    typer.echo(f"Malicious:   {summary['malicious']}")
+    typer.echo(f"\nLabel Distribution:")
+    for label, count in summary["label_distribution"].items():
+        typer.echo(f"  {label:40s} {count:>8d}")
+    typer.echo(f"\nCategory Distribution:")
+    for cat, count in summary["category_distribution"].items():
+        typer.echo(f"  {cat:25s} {count:>8d}")
 
 
 @app.command("check-env")

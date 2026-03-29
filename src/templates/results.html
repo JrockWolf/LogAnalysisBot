@@ -9,7 +9,7 @@
 <body>
   <div class="container">
     <!-- Header row -->
-    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <h1 style="margin:0">Analysis Results</h1>
       <span class="badge">Used: {{ llm_provider_display }}</span>
       <span class="badge badge-alt">Requested: {{ requested_provider_display }}</span>
@@ -26,6 +26,26 @@
     <div class="token-usage">
       <h2>Token Usage</h2>
       <p class="meta">Prompt: {{ token_usage.prompt }} &nbsp;•&nbsp; Completion: {{ token_usage.completion }} &nbsp;•&nbsp; Total: {{ token_usage.total }}</p>
+    </div>
+    {% endif %}
+
+    {% if dataset_summary %}
+    <div class="dataset-summary" style="background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:16px;margin-bottom:20px;">
+      <h2 style="margin-top:0;">Dataset Summary (CIC-IDS2017)</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+        <div><strong>Total Flows:</strong> {{ dataset_summary.total_flows }}</div>
+        <div><strong>Benign:</strong> {{ dataset_summary.benign }}</div>
+        <div><strong>Malicious:</strong> {{ dataset_summary.malicious }}</div>
+      </div>
+      {% if dataset_summary.category_distribution %}
+      <h3 style="margin-top:12px;">Category Distribution</h3>
+      <table style="width:100%;border-collapse:collapse;">
+        <tr style="border-bottom:1px solid #555;"><th style="text-align:left;padding:4px 8px;">Category</th><th style="text-align:right;padding:4px 8px;">Count</th></tr>
+        {% for cat, count in dataset_summary.category_distribution.items() %}
+        <tr><td style="padding:4px 8px;">{{ cat }}</td><td style="text-align:right;padding:4px 8px;">{{ count }}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -46,6 +66,24 @@
           </ul>
         {% else %}
           <p class="meta">No findings produced.</p>
+        {% endif %}
+
+        {% if mitre_mappings %}
+        <h2>MITRE ATT&CK Mappings</h2>
+        <div class="mitre-section" style="background:#1a1a2e;border:1px solid #444;border-radius:8px;padding:16px;">
+          {% for entry in mitre_mappings %}
+            {% if entry.mitre_techniques %}
+            <div style="margin-bottom:12px;">
+              <strong>{{ entry.finding }}</strong>
+              <ul style="margin:4px 0 0 16px;">
+                {% for t in entry.mitre_techniques %}
+                <li><a href="{{ t.url }}" target="_blank" rel="noopener" style="color:#bb86fc;">{{ t.technique_id }}</a> - {{ t.name }} ({{ t.tactic }})</li>
+                {% endfor %}
+              </ul>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
         {% endif %}
 
         {% if llm_text %}
@@ -70,7 +108,7 @@
         </div>
         <pre id="rawBlock" class="hidden">{{ raw }}</pre>
 
-        <a class="footer-link" href="/" style="display:inline-block;margin-top:14px;">← Analyze another</a>
+        <a class="footer-link" href="/" style="display:inline-block;margin-top:14px;">&larr; Analyze another</a>
       </div>
     </div>
   </div>
