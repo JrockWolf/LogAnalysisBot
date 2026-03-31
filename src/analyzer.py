@@ -6,6 +6,7 @@ from .mitre_mapping import enrich_findings_with_mitre, map_category_to_mitre
 import re
 import math
 import logging
+from collections import Counter
 
 logger = logging.getLogger("logbot.analyzer")
 if not logger.handlers:
@@ -149,12 +150,140 @@ def _detect_network_attacks(records: List[Dict[str, Any]]) -> List[str]:
     return findings
 
 
+# ---------------------------------------------------------------------------
+# PCAP packet-level heuristic detection
+# ---------------------------------------------------------------------------
+
+def _detect_pcap_attacks(records: List[Dict[str, Any]]) -> List[str]:
+    """Heuristic detection for PCAP packet records."""
+    findings: List[str] = []
+    total = len(records)
+    if total == 0:
+        return findings
+
+    findings.append(f"PCAP analysis: {total} packets captured")
+
+    # Count protocols, ports, sources, destinations
+    protocols = Counter()
+    src_ips = Counter()
+    dst_ips = Counter()
+    dst_ports = Counter()
+    src_ports = Counter()
+    tcp_flags = Counter()
+    dns_queries = []
+    icmp_count = 0
+    syn_only = 0  # SYN without ACK
+    large_packets = 0
+
+    for r in records:
+        proto = r.get("protocol", "")
+        protocols[proto] += 1
+
+        src = r.get("src_ip", "")
+        dst = r.get("dst_ip", "")
+        if src:
+            src_ips[src] += 1
+        if dst:
+            dst_ips[dst] += 1
+
+        dp = r.get("dst_port")
+        sp = r.get("src_port")
+        if dp is not None:
+            dst_ports[str(dp)] += 1
+        if sp is not None:
+            src_ports[str(sp)] += 1
+
+        flags = r.get("tcp_flags", "")
+        if flags:
+            tcp_flags[flags] += 1
+            if "S" in flags and "A" not in flags:
+                syn_only += 1
+
+        if proto == "ICMP":
+            icmp_count += 1
+
+        if r.get("dns_query"):
+            dns_queries.append(r["dns_query"])
+
+        size = r.get("packet_size", 0) or 0
+        if size > 1500:
+            large_packets += 1
+
+    # Protocol breakdown
+    proto_str = ", ".join(f"{p}: {c}" for p, c in protocols.most_common(5))
+    findings.append(f"Protocols: {proto_str}")
+
+    # SYN flood detection
+    if syn_only > 50 and syn_only > total * 0.3:
+        findings.append(
+            f"SYN Flood indicator: {syn_only} SYN-only packets ({syn_only*100//total}% of traffic) — "
+            f"potential SYN flood DoS attack"
+        )
+    elif syn_only > 20:
+        findings.append(
+            f"Elevated SYN activity: {syn_only} SYN-only packets detected — "
+            f"possible port scanning or connection attempts"
+        )
+
+    # Port scan detection: single source hitting many destination ports
+    for src, count in src_ips.most_common(10):
+        src_records = [r for r in records if r.get("src_ip") == src]
+        unique_dst_ports = len(set(str(r.get("dst_port", "")) for r in src_records if r.get("dst_port")))
+        if unique_dst_ports > 20:
+            findings.append(
+                f"Port Scan detected from {src}: {unique_dst_ports} unique destination ports probed "
+                f"({count} packets total)"
+            )
+
+    # ICMP flood
+    if icmp_count > 100 and icmp_count > total * 0.2:
+        findings.append(
+            f"ICMP Flood indicator: {icmp_count} ICMP packets ({icmp_count*100//total}% of traffic) — "
+            f"potential ping flood attack"
+        )
+
+    # DNS tunneling: unusually long DNS queries
+    long_dns = [q for q in dns_queries if len(q) > 60]
+    if long_dns:
+        findings.append(
+            f"DNS Tunneling indicator: {len(long_dns)} DNS queries with length > 60 chars — "
+            f"possible data exfiltration via DNS"
+        )
+
+    # Too many connections from single source
+    for src, count in src_ips.most_common(3):
+        if count > total * 0.5 and count > 100:
+            findings.append(
+                f"Traffic concentration: {src} accounts for {count} packets ({count*100//total}% of all traffic)"
+            )
+
+    # Suspicious ports
+    suspicious = {"4444", "5555", "6666", "6667", "31337", "1234", "12345"}
+    found_suspicious = {p: c for p, c in dst_ports.items() if p in suspicious}
+    if found_suspicious:
+        port_str = ", ".join(f"port {p} ({c} packets)" for p, c in found_suspicious.items())
+        findings.append(f"Suspicious destination ports: {port_str}")
+
+    # Large packets
+    if large_packets > 0:
+        findings.append(f"Jumbo/fragmented packets: {large_packets} packets exceed 1500 bytes MTU")
+
+    return findings
+
+
 def heuristic_detect(records: List[Dict[str, Any]]) -> List[str]:
     findings = []
 
+    if not records:
+        return findings
+
     # Check if these are CIC-IDS2017 records (have _category key)
-    if records and records[0].get("type") == "cicids":
+    if records[0].get("type") == "cicids":
         return _detect_network_attacks(records)
+
+    # Check if these are PCAP records
+    if records[0].get("type") == "pcap":
+        return _detect_pcap_attacks(records)
 
     # Original syslog-based heuristics
     # aggregate SSH failures by IP

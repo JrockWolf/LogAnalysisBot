@@ -1,5 +1,5 @@
 """Tests for CIC-IDS2017 dataset loading, parsing, analysis, evaluation,
-and MITRE ATT&CK mapping."""
+MITRE ATT&CK mapping, and PCAP/pipeline support."""
 
 import tempfile
 from pathlib import Path
@@ -19,8 +19,8 @@ from src.mitre_mapping import (
     enrich_findings_with_mitre,
     TECHNIQUES,
 )
-from src.parsers import is_cicids_csv, parse_cicids_csv, parse_log
-from src.analyzer import heuristic_detect, _detect_network_attacks
+from src.parsers import is_cicids_csv, parse_cicids_csv, parse_log, detect_file_type
+from src.analyzer import heuristic_detect, _detect_network_attacks, _detect_pcap_attacks
 from src.eval import (
     precision_recall_f1,
     binary_metrics,
@@ -397,6 +397,117 @@ class TestIntegration:
         report = format_evaluation_report(results)
         assert "EVALUATION REPORT" in report
         assert "Accuracy" in report
+
+
+# ── File Type Detection Tests ─────────────────────────────────────────
+
+class TestFileTypeDetection:
+    def test_json_file(self, tmp_path):
+        p = tmp_path / "test.json"
+        p.write_text('[{"key": "value"}]')
+        assert detect_file_type(p) == "json"
+
+    def test_csv_file(self, tmp_path):
+        p = tmp_path / "test.csv"
+        p.write_text("col1,col2\nval1,val2\n")
+        assert detect_file_type(p) == "csv"
+
+    def test_text_file(self, tmp_path):
+        p = tmp_path / "test.log"
+        p.write_text("Jan 01 00:00:00 hostname sshd[1234]: test\n")
+        assert detect_file_type(p) == "text"
+
+
+# ── PCAP Heuristic Tests ─────────────────────────────────────────────
+
+class TestPcapHeuristics:
+    def test_syn_flood_detection(self):
+        records = [
+            {"type": "pcap", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
+             "protocol": "TCP", "src_port": 12345 + i, "dst_port": 80,
+             "tcp_flags": "S", "packet_size": 60}
+            for i in range(100)
+        ]
+        findings = _detect_pcap_attacks(records)
+        assert any("SYN Flood" in f or "SYN" in f for f in findings)
+
+    def test_port_scan_detection(self):
+        records = [
+            {"type": "pcap", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
+             "protocol": "TCP", "src_port": 54321, "dst_port": port,
+             "tcp_flags": "S", "packet_size": 60}
+            for port in range(1, 51)
+        ]
+        findings = _detect_pcap_attacks(records)
+        assert any("Port Scan" in f for f in findings)
+
+    def test_suspicious_ports(self):
+        records = [
+            {"type": "pcap", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
+             "protocol": "TCP", "src_port": 12345, "dst_port": 4444,
+             "tcp_flags": "SA", "packet_size": 100}
+        ]
+        findings = _detect_pcap_attacks(records)
+        assert any("Suspicious" in f or "4444" in f for f in findings)
+
+    def test_heuristic_detect_dispatches_pcap(self):
+        records = [
+            {"type": "pcap", "src_ip": "10.0.0.1", "dst_ip": "10.0.0.2",
+             "protocol": "TCP", "src_port": 1234, "dst_port": 80,
+             "tcp_flags": "SA", "packet_size": 100}
+        ]
+        findings = heuristic_detect(records)
+        assert any("PCAP" in f for f in findings)
+
+
+# ── Pipeline Tests ────────────────────────────────────────────────────
+
+class TestPipeline:
+    def test_extract_numeric_features(self):
+        from src.pipeline import extract_numeric_features
+        records = [
+            {"a": "1.5", "b": "hello", "c": "3"},
+            {"a": "2.5", "b": "world", "c": "4"},
+        ]
+        names, matrix = extract_numeric_features(records)
+        assert len(matrix) == 2
+        assert "a" in names
+        assert "c" in names
+        assert "b" not in names
+
+    def test_compute_statistics(self):
+        from src.pipeline import compute_statistics
+        records = [
+            {"x": "1", "y": "10"},
+            {"x": "2", "y": "20"},
+            {"x": "3", "y": "30"},
+        ]
+        result = compute_statistics(records)
+        stats = result["stats"]
+        assert "x" in stats
+        assert stats["x"]["mean"] == 2.0
+        assert stats["x"]["min"] == 1.0
+        assert stats["x"]["max"] == 3.0
+
+    def test_isolation_forest(self):
+        from src.pipeline import run_isolation_forest
+        # Create records with a clear outlier
+        records = [{"val": str(i)} for i in range(50)]
+        records.append({"val": "9999"})  # outlier
+        result = run_isolation_forest(records, contamination=0.05)
+        assert "anomaly_count" in result
+        assert "total_records" in result
+        assert result["total_records"] == 51
+
+    def test_dataset_overview_generic(self):
+        from src.pipeline import dataset_overview
+        records = [
+            {"a": "1", "b": "cat"},
+            {"a": "2", "b": "dog"},
+            {"a": "3", "b": "cat"},
+        ]
+        overview = dataset_overview(records)
+        assert overview["total_records"] == 3
 
     @pytest.mark.skipif(not SAMPLE_CSV.exists(), reason="Sample dataset not found")
     def test_mitre_enrichment_on_sample(self):

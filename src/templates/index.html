@@ -2,161 +2,266 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Log Analysis Helper</title>
+  <title>LogAnalysisBot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container">
-    <h1>Log Analysis Helper</h1>
-    <p class="subtitle">
-      Upload a log file or paste log lines. We auto-detect gzip/zip and common encodings.
-    </p>
-    
+    <div class="hero">
+      <h1>LogAnalysisBot</h1>
+      <p class="subtitle">
+        Upload files for security analysis or data visualization. Supports PCAP captures,
+        network logs, CSV datasets, JSON logs, and more.
+      </p>
+    </div>
+
     {% if error %}
-    <div class="error-message" style="background-color: #fee; border: 1px solid #c33; color: #c33; padding: 12px; border-radius: 4px; margin-bottom: 20px;">
+    <div class="error-message">
       <strong>Error:</strong> {{ error }}
     </div>
     {% endif %}
 
-    <!-- Two-column grid -->
-    <div class="grid-results">
-      <!-- LEFT COLUMN: Upload -->
-      <div>
-        <h2>Upload Log File</h2>
-        <form id="uploadForm" action="/analyze" method="post" enctype="multipart/form-data" style="margin-bottom:12px">
-          <label class="meta" for="upload">Select a file:</label><br/>
-          <input type="file" name="upload" id="upload" accept=".log,.txt,.json,.csv,.gz,.zip" class="file-input" />
-          <div class="form-field">
-            <label class="meta" for="provider-upload">LLM provider</label>
-            <select name="provider" id="provider-upload">
-              {% for value, label in providers %}
-                <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
-            <label class="meta" for="model-upload">Gemini model</label>
-            <input type="text" name="model" id="model-upload" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
-            <p class="meta">Specify a Gemini model (leave blank to use the default).</p>
-          </div>
-          <div class="form-field">
-            <label class="meta" for="api-key-upload">API key</label>
-            <input type="password" name="api_key" id="api-key-upload" placeholder="Enter provider key" autocomplete="off" />
-            <p class="meta">Key is used only for this request and is not stored.</p>
-          </div>
-          <div class="actions" style="margin-top:10px;">
-            <button type="submit">Analyze</button>
-            <button type="button" class="secondary" onclick="document.getElementById('upload').value=''">Clear</button>
-          </div>
-        </form>
-        <p class="meta">Tip: You can also drag and drop a file anywhere on the page to analyze it automatically.</p>
+    <!-- VirusTotal-style tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="analyze" onclick="switchTab('analyze')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        Analyze
+      </button>
+      <button class="tab" data-tab="visualize" onclick="switchTab('visualize')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Visualize
+      </button>
+    </div>
+
+    <!-- SECTION 1: ANALYZE -->
+    <div id="tab-analyze" class="tab-content active">
+      <div class="section-header">
+        <h2>Security Analysis</h2>
+        <p class="meta">Upload a file or paste data for security findings, MITRE ATT&CK mapping, and anomaly detection.</p>
       </div>
 
-      <!-- RIGHT COLUMN: Paste -->
-      <div>
-        <h2>Paste Log Text</h2>
-        <form id="pasteForm" action="/analyze" method="post">
-          <textarea name="pasted" rows="12" placeholder="Paste logs here..."></textarea>
-          <div class="form-field">
-            <label class="meta" for="provider-paste">LLM provider</label>
-            <select name="provider" id="provider-paste">
-              {% for value, label in providers %}
-                <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
-            <label class="meta" for="model-paste">Gemini model</label>
-            <input type="text" name="model" id="model-paste" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
-            <p class="meta">Specify a Gemini model (leave blank to use the default).</p>
-          </div>
-          <div class="form-field">
-            <label class="meta" for="api-key-paste">API key</label>
-            <input type="password" name="api_key" id="api-key-paste" placeholder="Enter provider key" autocomplete="off" />
-            <p class="meta">Key is used only for this request and is not stored.</p>
-          </div>
-          <div class="actions">
-            <button type="submit">Analyze</button>
-            <button type="button" class="secondary" onclick="document.querySelector('[name=pasted]').value=''">Clear</button>
-          </div>
-        </form>
+      <div class="grid-results">
+        <!-- Upload -->
+        <div class="upload-card">
+          <h3>Upload File</h3>
+          <form id="uploadForm" action="/analyze" method="post" enctype="multipart/form-data">
+            <div class="drop-zone" id="dropZone">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p>Drop file here or click to browse</p>
+              <p class="meta">PCAP, CSV, JSON, LOG, TXT, GZ, ZIP</p>
+              <input type="file" name="upload" id="upload" class="file-input-hidden" accept=".pcap,.pcapng,.cap,.csv,.json,.jsonl,.log,.txt,.gz,.zip" />
+            </div>
+            <div id="selectedFile" class="selected-file hidden"></div>
+
+            <div class="form-field">
+              <label class="meta" for="provider-upload">LLM Provider</label>
+              <select name="provider" id="provider-upload">
+                {% for value, label in providers %}
+                  <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
+              <label class="meta" for="model-upload">Gemini Model</label>
+              <input type="text" name="model" id="model-upload" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            </div>
+            <div class="form-field">
+              <label class="meta" for="api-key-upload">API Key</label>
+              <input type="password" name="api_key" id="api-key-upload" placeholder="Enter provider key" autocomplete="off" />
+              <p class="meta">Used for this request only — never stored.</p>
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn-primary">Analyze File</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Paste -->
+        <div class="upload-card">
+          <h3>Paste Data</h3>
+          <form id="pasteForm" action="/analyze" method="post">
+            <textarea name="pasted" rows="10" placeholder="Paste log lines, CSV data, or JSON entries..."></textarea>
+            <div class="form-field">
+              <label class="meta" for="provider-paste">LLM Provider</label>
+              <select name="provider" id="provider-paste">
+                {% for value, label in providers %}
+                  <option value="{{ value }}" {% if selected_provider == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
+              <label class="meta" for="model-paste">Gemini Model</label>
+              <input type="text" name="model" id="model-paste" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            </div>
+            <div class="form-field">
+              <label class="meta" for="api-key-paste">API Key</label>
+              <input type="password" name="api_key" id="api-key-paste" placeholder="Enter provider key" autocomplete="off" />
+            </div>
+            <div class="actions">
+              <button type="submit" class="btn-primary">Analyze Text</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION 2: VISUALIZE -->
+    <div id="tab-visualize" class="tab-content">
+      <div class="section-header">
+        <h2>Data Visualization</h2>
+        <p class="meta">Upload a dataset to generate charts, statistics, and run anomaly detection. No LLM required.</p>
+      </div>
+
+      <div class="grid-results">
+        <div class="upload-card">
+          <h3>Upload Dataset</h3>
+          <form id="vizUploadForm" action="/visualize" method="post" enctype="multipart/form-data">
+            <div class="drop-zone" id="vizDropZone">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              <p>Drop dataset here or click to browse</p>
+              <p class="meta">PCAP, CSV, JSON, LOG</p>
+              <input type="file" name="upload" id="vizUpload" class="file-input-hidden" accept=".pcap,.pcapng,.cap,.csv,.json,.jsonl,.log,.txt,.gz,.zip" />
+            </div>
+            <div id="vizSelectedFile" class="selected-file hidden"></div>
+            <div class="actions">
+              <button type="submit" class="btn-primary">Generate Charts</button>
+            </div>
+          </form>
+        </div>
+
+        <div class="upload-card">
+          <h3>Paste Dataset</h3>
+          <form id="vizPasteForm" action="/visualize" method="post">
+            <textarea name="pasted" rows="10" placeholder="Paste CSV data, JSON entries, or log lines..."></textarea>
+            <div class="actions">
+              <button type="submit" class="btn-primary">Generate Charts</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Supported formats info -->
+    <div class="format-info">
+      <h3>Supported Formats</h3>
+      <div class="format-grid">
+        <div class="format-item">
+          <span class="format-icon">📦</span>
+          <strong>PCAP / PCAPNG</strong>
+          <span class="meta">Wireshark captures</span>
+        </div>
+        <div class="format-item">
+          <span class="format-icon">📊</span>
+          <strong>CSV</strong>
+          <span class="meta">Datasets, CIC-IDS2017</span>
+        </div>
+        <div class="format-item">
+          <span class="format-icon">📋</span>
+          <strong>JSON / JSONL</strong>
+          <span class="meta">Structured logs</span>
+        </div>
+        <div class="format-item">
+          <span class="format-icon">📝</span>
+          <strong>Text / Syslog</strong>
+          <span class="meta">Network & system logs</span>
+        </div>
+        <div class="format-item">
+          <span class="format-icon">🗜️</span>
+          <strong>GZ / ZIP</strong>
+          <span class="meta">Compressed archives</span>
+        </div>
       </div>
     </div>
   </div>
 
   <script>
-    // Drag & drop anywhere → feeds file input and submits upload form
-    const uploadForm = document.getElementById('uploadForm');
-    window.addEventListener('dragover', e => { e.preventDefault(); document.body.classList.add('dragging'); });
-    window.addEventListener('dragleave', e => { document.body.classList.remove('dragging'); });
+    // Tab switching
+    function switchTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+      document.getElementById(`tab-${tabName}`).classList.add('active');
+    }
+
+    // Drop zone handling
+    function setupDropZone(zoneId, inputId, displayId, formId) {
+      const zone = document.getElementById(zoneId);
+      const input = document.getElementById(inputId);
+      const display = document.getElementById(displayId);
+
+      zone.addEventListener('click', () => input.click());
+      zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+      zone.addEventListener('drop', e => {
+        e.preventDefault(); zone.classList.remove('drag-over');
+        if (e.dataTransfer.files?.length) {
+          input.files = e.dataTransfer.files;
+          showFileName(input, display);
+        }
+      });
+      input.addEventListener('change', () => showFileName(input, display));
+    }
+
+    function showFileName(input, display) {
+      if (input.files?.length) {
+        const f = input.files[0];
+        const size = f.size < 1024 ? f.size + ' B' :
+                     f.size < 1048576 ? (f.size/1024).toFixed(1) + ' KB' :
+                     (f.size/1048576).toFixed(1) + ' MB';
+        display.textContent = `${f.name} (${size})`;
+        display.classList.remove('hidden');
+      }
+    }
+
+    setupDropZone('dropZone', 'upload', 'selectedFile', 'uploadForm');
+    setupDropZone('vizDropZone', 'vizUpload', 'vizSelectedFile', 'vizUploadForm');
+
+    // Global drag & drop
+    window.addEventListener('dragover', e => e.preventDefault());
     window.addEventListener('drop', e => {
-      e.preventDefault(); document.body.classList.remove('dragging');
+      e.preventDefault();
       if (!e.dataTransfer.files?.length) return;
-      const input = uploadForm.querySelector('input[type=file]');
-      input.files = e.dataTransfer.files;
-      uploadForm.submit();
+      const activeTab = document.querySelector('.tab-content.active');
+      const input = activeTab.querySelector('input[type=file]');
+      const form = input?.closest('form');
+      if (input && form) { input.files = e.dataTransfer.files; form.submit(); }
     });
 
-    // Keep provider selectors in sync across forms
+    // Provider sync
     const providerSelectors = document.querySelectorAll('select[name="provider"]');
     providerSelectors.forEach(sel => {
       sel.addEventListener('change', () => {
-        providerSelectors.forEach(other => {
-          if (other !== sel) {
-            other.value = sel.value;
-          }
-        });
+        providerSelectors.forEach(o => { if (o !== sel) o.value = sel.value; });
         updateModelVisibility(sel.value);
       });
     });
 
-    // Mirror API key fields so users can switch forms without retyping
     const keyInputs = document.querySelectorAll('input[name="api_key"]');
     keyInputs.forEach(input => {
       input.addEventListener('input', () => {
-        keyInputs.forEach(other => {
-          if (other !== input) {
-            other.value = input.value;
-          }
-        });
+        keyInputs.forEach(o => { if (o !== input) o.value = input.value; });
       });
     });
 
-    // Sync model fields between forms
     const modelInputs = document.querySelectorAll('input[name="model"]');
     const modelGroups = document.querySelectorAll('.model-field');
     modelInputs.forEach(input => {
       input.addEventListener('input', () => {
-        modelInputs.forEach(other => {
-          if (other !== input) {
-            other.value = input.value;
-          }
-        });
+        modelInputs.forEach(o => { if (o !== input) o.value = input.value; });
       });
     });
 
-    function updateModelVisibility(providerValue) {
-      const show = (providerValue || '').toLowerCase() === 'gemini';
-      modelGroups.forEach(group => {
-        const input = group.querySelector('input[name="model"]');
-        if (show) {
-          group.classList.remove('hidden');
-          if (input) {
-            input.disabled = false;
-          }
-        } else {
-          group.classList.add('hidden');
-          if (input) {
-            input.disabled = true;
-          }
-        }
+    function updateModelVisibility(val) {
+      const show = (val || '').toLowerCase() === 'gemini';
+      modelGroups.forEach(g => {
+        const inp = g.querySelector('input[name="model"]');
+        if (show) { g.classList.remove('hidden'); if (inp) inp.disabled = false; }
+        else { g.classList.add('hidden'); if (inp) inp.disabled = true; }
       });
     }
 
-    if (providerSelectors.length) {
-      updateModelVisibility(providerSelectors[0].value);
-    }
+    if (providerSelectors.length) updateModelVisibility(providerSelectors[0].value);
   </script>
 </body>
 </html>

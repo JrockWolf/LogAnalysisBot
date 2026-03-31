@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Analysis Results — LogAnalysisBot</title>
+  <title>Visualization — LogAnalysisBot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
@@ -12,146 +12,94 @@
     <!-- Header -->
     <div class="results-header">
       <div class="results-title-row">
-        <h1>Analysis Results</h1>
+        <h1>Visualization</h1>
         <div class="badge-row">
           <span class="badge">{{ file_type | upper }}</span>
           <span class="badge">{{ filename }}</span>
-          {% if llm_provider_display and llm_provider_display != 'None' %}
-          <span class="badge badge-alt">LLM: {{ llm_provider_display }}</span>
-          {% endif %}
-          {% if model_used %}
-          <span class="badge">Model: {{ model_used }}</span>
-          {% endif %}
+          <span class="badge">{{ total_records }} records</span>
         </div>
       </div>
-      <a class="back-link" href="/">&larr; New Analysis</a>
+      <a class="back-link" href="/">&larr; New Visualization</a>
     </div>
 
     {% if decode_warning %}
     <div class="warning">{{ decode_warning }}</div>
     {% endif %}
 
-    <!-- Summary cards -->
-    <div class="summary-cards">
-      <div class="summary-card">
-        <span class="summary-number">{{ findings|length if findings else 0 }}</span>
-        <span class="summary-label">Findings</span>
-      </div>
-      {% if anomaly_result %}
-      <div class="summary-card {% if anomaly_result.anomaly_count > 0 %}summary-danger{% endif %}">
-        <span class="summary-number">{{ anomaly_result.anomaly_count }}</span>
-        <span class="summary-label">Anomalies Detected</span>
-      </div>
-      <div class="summary-card">
-        <span class="summary-number">{{ anomaly_result.total_records }}</span>
-        <span class="summary-label">Records Analyzed</span>
-      </div>
-      {% endif %}
-      {% if mitre_mappings %}
-      <div class="summary-card">
-        <span class="summary-number">{{ mitre_mappings|selectattr('mitre_techniques')|list|length }}</span>
-        <span class="summary-label">MITRE Mappings</span>
-      </div>
-      {% endif %}
-      {% if token_usage %}
-      <div class="summary-card">
-        <span class="summary-number">{{ token_usage.total }}</span>
-        <span class="summary-label">Tokens Used</span>
-      </div>
-      {% endif %}
-    </div>
-
-    <!-- Tabs for result sections -->
+    <!-- Tabs -->
     <div class="tabs">
-      <button class="tab active" data-tab="findings" onclick="switchTab('findings')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        Findings
+      <button class="tab active" data-tab="overview" onclick="switchTab('overview')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+        Overview
       </button>
       <button class="tab" data-tab="charts" onclick="switchTab('charts')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Charts
       </button>
+      {% if statistics and statistics.stats %}
+      <button class="tab" data-tab="stats" onclick="switchTab('stats')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Statistics
+      </button>
+      {% endif %}
       {% if anomaly_result and anomaly_result.anomaly_count is defined %}
       <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         Anomalies
       </button>
       {% endif %}
-      <button class="tab" data-tab="raw" onclick="switchTab('raw')">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-        Raw Data
-      </button>
     </div>
 
-    <!-- FINDINGS TAB -->
-    <div id="tab-findings" class="tab-content active">
-      <div class="results-section">
-        <div class="section-toolbar">
-          <h2>Security Findings</h2>
-          <div class="toolbar-actions">
-            <button class="secondary small" data-copy="findingsList" onclick="copyText('findingsList')">Copy</button>
-            <button class="small" onclick="downloadText('findings.txt', document.getElementById('findingsList')?.innerText || '')">Download</button>
-          </div>
-        </div>
-        {% if findings and findings|length %}
-          <ul id="findingsList" class="findings-list">
-            {% for f in findings %}
-              <li class="finding {% if 'critical' in f.lower() or 'ddos' in f.lower() or 'flood' in f.lower() %}finding-critical{% elif 'anomaly' in f.lower() or 'attack' in f.lower() or 'brute' in f.lower() %}finding-warning{% elif '(info)' in f.lower() or '(error)' in f.lower() %}finding-info{% endif %}">
-                {{ f }}
-              </li>
-            {% endfor %}
-          </ul>
-        {% else %}
-          <p class="meta">No findings produced.</p>
-        {% endif %}
-      </div>
-
-      {% if mitre_mappings %}
-      <div class="results-section">
-        <h2>MITRE ATT&CK Mappings</h2>
-        <div class="mitre-grid">
-          {% for entry in mitre_mappings %}
-            {% if entry.mitre_techniques %}
-            <div class="mitre-card">
-              <div class="mitre-finding">{{ entry.finding }}</div>
-              <div class="mitre-techniques">
-                {% for t in entry.mitre_techniques %}
-                <a href="{{ t.url }}" target="_blank" rel="noopener" class="mitre-tag">
-                  {{ t.technique_id }} — {{ t.name }}
-                  <span class="mitre-tactic">{{ t.tactic }}</span>
-                </a>
-                {% endfor %}
-              </div>
-            </div>
-            {% endif %}
-          {% endfor %}
-        </div>
-      </div>
-      {% endif %}
-
-      {% if llm_text %}
-      <div class="results-section">
-        <div class="section-toolbar">
-          <h2>LLM Summary</h2>
-          <button class="secondary small" data-copy="llmText" onclick="copyText('llmText')">Copy</button>
-        </div>
-        <pre id="llmText">{{ llm_text }}</pre>
-      </div>
-      {% endif %}
-
+    <!-- OVERVIEW TAB -->
+    <div id="tab-overview" class="tab-content active">
       {% if dataset_summary %}
       <div class="results-section">
-        <h2>Dataset Summary</h2>
+        <h2>Dataset Overview</h2>
         <div class="stats-grid">
-          <div class="stat-card"><span class="stat-value">{{ dataset_summary.total_records or dataset_summary.total_flows or '—' }}</span><span class="stat-label">Total Records</span></div>
-          {% if dataset_summary.benign is defined %}
-          <div class="stat-card"><span class="stat-value">{{ dataset_summary.benign }}</span><span class="stat-label">Benign</span></div>
-          <div class="stat-card"><span class="stat-value">{{ dataset_summary.malicious }}</span><span class="stat-label">Malicious</span></div>
+          <div class="stat-card">
+            <span class="stat-value">{{ dataset_summary.total_records or total_records }}</span>
+            <span class="stat-label">Total Records</span>
+          </div>
+          {% if dataset_summary.unique_ips is defined %}
+          <div class="stat-card">
+            <span class="stat-value">{{ dataset_summary.unique_ips }}</span>
+            <span class="stat-label">Unique IPs</span>
+          </div>
           {% endif %}
           {% if dataset_summary.protocols %}
-          <div class="stat-card"><span class="stat-value">{{ dataset_summary.protocols|length }}</span><span class="stat-label">Protocols</span></div>
+          <div class="stat-card">
+            <span class="stat-value">{{ dataset_summary.protocols | length }}</span>
+            <span class="stat-label">Protocols</span>
+          </div>
+          {% endif %}
+          {% if dataset_summary.benign is defined %}
+          <div class="stat-card">
+            <span class="stat-value">{{ dataset_summary.benign }}</span>
+            <span class="stat-label">Benign</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value">{{ dataset_summary.malicious }}</span>
+            <span class="stat-label">Malicious</span>
+          </div>
+          {% endif %}
+          {% if anomaly_result and anomaly_result.anomaly_count is defined %}
+          <div class="stat-card {% if anomaly_result.anomaly_count > 0 %}summary-danger{% endif %}">
+            <span class="stat-value">{{ anomaly_result.anomaly_count }}</span>
+            <span class="stat-label">Anomalies Detected</span>
+          </div>
           {% endif %}
         </div>
+
+        {% if dataset_summary.protocols %}
+        <h3>Protocol Distribution</h3>
+        <table class="data-table">
+          <tr><th>Protocol</th><th>Count</th></tr>
+          {% for proto, count in dataset_summary.protocols.items() %}
+          <tr><td>{{ proto }}</td><td>{{ count }}</td></tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+
         {% if dataset_summary.categories or dataset_summary.category_distribution %}
         <h3>Category Distribution</h3>
         <table class="data-table">
@@ -162,6 +110,11 @@
         </table>
         {% endif %}
       </div>
+      {% else %}
+      <div class="results-section">
+        <h2>Dataset</h2>
+        <p class="meta">{{ total_records }} records loaded from {{ filename }}.</p>
+      </div>
       {% endif %}
     </div>
 
@@ -170,9 +123,45 @@
       <div class="charts-section" id="chartsSection">
         <h2>Data Visualizations</h2>
         <div class="charts-grid" id="chartsGrid"></div>
-        <p class="meta" id="noChartsMsg" style="display:none;">No chart data available for this file.</p>
+        <p class="meta" id="noChartsMsg" style="display:none;">No chart data available.</p>
       </div>
     </div>
+
+    <!-- STATISTICS TAB -->
+    {% if statistics and statistics.stats %}
+    <div id="tab-stats" class="tab-content">
+      <div class="results-section">
+        <h2>Column Statistics</h2>
+        <p class="meta">Descriptive statistics for each numeric column in the dataset.</p>
+        <div class="stats-table-wrapper">
+          <table class="data-table data-table-stats">
+            <tr>
+              <th>Feature</th>
+              <th>Mean</th>
+              <th>Std Dev</th>
+              <th>Min</th>
+              <th>Q25</th>
+              <th>Median</th>
+              <th>Q75</th>
+              <th>Max</th>
+            </tr>
+            {% for fname, vals in statistics.stats.items() %}
+            <tr>
+              <td class="nowrap">{{ fname }}</td>
+              <td>{{ "%.4g" | format(vals.mean) if vals.mean is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.std) if vals.std is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.min) if vals.min is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.q25) if vals.q25 is defined and vals.q25 is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.median) if vals.median is defined and vals.median is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.q75) if vals.q75 is defined and vals.q75 is not none else "—" }}</td>
+              <td>{{ "%.4g" | format(vals.max) if vals.max is not none else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+        </div>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- ANOMALIES TAB -->
     {% if anomaly_result and anomaly_result.anomaly_count is defined %}
@@ -224,17 +213,6 @@
       </div>
     </div>
     {% endif %}
-
-    <!-- RAW DATA TAB -->
-    <div id="tab-raw" class="tab-content">
-      <div class="results-section">
-        <div class="section-toolbar">
-          <h2>Raw Data</h2>
-          <button class="small" onclick="downloadText('raw.log', document.getElementById('rawBlock')?.innerText || '')">Download</button>
-        </div>
-        <pre id="rawBlock">{{ raw }}</pre>
-      </div>
-    </div>
   </div>
 
   <script>
@@ -243,21 +221,6 @@
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
       document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
       document.getElementById(`tab-${tabName}`)?.classList.add('active');
-    }
-
-    function copyText(id) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      navigator.clipboard.writeText(el.innerText || '');
-      const btn = document.querySelector(`[data-copy="${id}"]`);
-      if (btn) { const t=btn.textContent; btn.textContent='Copied!'; setTimeout(()=>btn.textContent=t, 900); }
-    }
-
-    function downloadText(filename, text) {
-      const blob = new Blob([text], { type: 'text/plain' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a'); a.href = url; a.download = filename; a.click();
-      URL.revokeObjectURL(url);
     }
 
     /* Chart rendering */
@@ -274,13 +237,13 @@
       if (!grid) return;
 
       const order = [
-        'benign_vs_malicious', 'category_distribution', 'anomaly_split',
-        'protocol_distribution', 'findings_severity', 'findings_by_type',
+        'protocol_distribution', 'anomaly_split',
         'top_ports', 'top_source_ips', 'top_dest_ips',
-        'packet_sizes', 'tcp_flags', 'feature_importances',
-        'anomaly_score_dist',
+        'packet_sizes', 'tcp_flags',
+        'feature_importances', 'anomaly_score_dist',
+        'feature_variability', 'feature_means',
+        'benign_vs_malicious', 'category_distribution',
         'flows_per_category', 'avg_bytes_per_category',
-        'avg_packets_per_category', 'syn_flags_per_category',
       ];
       const keys = order.filter(k => raw[k]).concat(Object.keys(raw).filter(k => !order.includes(k)));
 
@@ -319,7 +282,6 @@
               tooltip: {
                 backgroundColor: '#1a1a2e', titleColor: '#e6e6f2', bodyColor: '#e6e6f2',
                 borderColor: '#444', borderWidth: 1,
-                callbacks: { label: ctx => { let v = isPie ? ctx.raw : ctx.parsed; return ctx.label + ': ' + (typeof v === 'number' && v > 999 ? v.toLocaleString() : v); } }
               }
             },
             scales: isPie ? {} : {

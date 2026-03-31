@@ -4,11 +4,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from .analyzer import analyze_logs_with_llm, heuristic_detect
-from .parsers import parse_text_log, is_cicids_csv
+from .parsers import parse_log, is_cicids_csv, detect_file_type
 from .mitre_mapping import enrich_findings_with_mitre
+from .charts import generate_chart_data
+from .pipeline import run_isolation_forest, compute_statistics, dataset_overview
 import tempfile
 import logging
 import os
+import json
 
 SUPPORTED_PROVIDERS = [
     ("auto", "Automatic (use environment or supplied key)"),
@@ -40,6 +43,103 @@ templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 app.mount("/static", StaticFiles(directory=str(Path(__file__).parent / "static")), name="static")
 
 
+# ── Helpers ────────────────────────────────────────────────────────
+
+ACCEPTED_EXTENSIONS = (
+    ".log", ".txt", ".csv", ".json", ".jsonl",
+    ".pcap", ".pcapng", ".cap",
+    ".gz", ".zip",
+)
+
+
+def try_decode(b: bytes):
+    encodings = ["utf-8", "utf-16", "cp1252", "latin-1"]
+    for enc in encodings:
+        try:
+            return b.decode(enc), enc
+        except Exception:
+            continue
+    return b.decode("latin-1", errors="replace"), "latin-1-replace"
+
+
+def _handle_upload(data: bytes, upload_name: str):
+    """Decompress if needed, decode, return (raw_text_or_None, bytes_or_None, effective_suffix, warning)."""
+    effective_suffix = Path(upload_name).suffix.lower() or ".log"
+    decode_warning = None
+    raw_text = None
+    raw_bytes = None  # for binary files like pcap
+
+    # Check for binary (pcap) files first
+    if data[:4] in (b"\xa1\xb2\xc3\xd4", b"\xd4\xc3\xb2\xa1", b"\x0a\x0d\x0d\x0a") or effective_suffix in (".pcap", ".pcapng", ".cap"):
+        return None, data, effective_suffix, None
+
+    try:
+        import gzip
+        if data.startswith(b"\x1f\x8b"):
+            stem = Path(upload_name)
+            if stem.suffix.lower() == ".gz":
+                effective_suffix = Path(stem.stem).suffix.lower() or ".log"
+            try:
+                dec = gzip.decompress(data)
+                # Check if decompressed content is pcap
+                if dec[:4] in (b"\xa1\xb2\xc3\xd4", b"\xd4\xc3\xb2\xa1", b"\x0a\x0d\x0d\x0a"):
+                    return None, dec, effective_suffix if effective_suffix in (".pcap", ".pcapng", ".cap") else ".pcap", f"File was gzip compressed; decompressed as pcap."
+                text, enc = try_decode(dec)
+                return text, None, effective_suffix, f"File was gzip compressed; decompressed and decoded as {enc}."
+            except Exception:
+                text, enc = try_decode(data)
+                return text, None, effective_suffix, f"Could not decompress gzip; decoded raw bytes as {enc}."
+
+        elif data.startswith(b"PK\x03\x04"):
+            import zipfile, io
+            try:
+                z = zipfile.ZipFile(io.BytesIO(data))
+                entries = [n for n in z.namelist() if not n.endswith("/")]
+                if not entries:
+                    raw_text, enc = try_decode(data)
+                    return raw_text, None, effective_suffix, "Zip archive is empty."
+                elif len(entries) == 1:
+                    name = entries[0]
+                    effective_suffix = Path(name).suffix.lower() or ".log"
+                    val = z.read(name)
+                    if val[:4] in (b"\xa1\xb2\xc3\xd4", b"\xd4\xc3\xb2\xa1", b"\x0a\x0d\x0d\x0a"):
+                        return None, val, effective_suffix if effective_suffix in (".pcap", ".pcapng", ".cap") else ".pcap", f"Zip: extracted {name} as pcap."
+                    raw_text, enc = try_decode(val)
+                    return raw_text, None, effective_suffix, f"Zip: extracted {name} (decoded as {enc})."
+                else:
+                    parts = []
+                    used_names = []
+                    first_suffix = None
+                    for name in entries:
+                        try:
+                            val = z.read(name)
+                            txt, enc = try_decode(val)
+                            parts.append(txt)
+                            used_names.append(name)
+                            if first_suffix is None:
+                                first_suffix = Path(name).suffix.lower()
+                        except Exception:
+                            continue
+                    if parts:
+                        raw_text = "\n".join(parts)
+                        effective_suffix = first_suffix or ".log"
+                        return raw_text, None, effective_suffix, f"Zip: concatenated {len(parts)} files."
+                    raw_text, enc = try_decode(data)
+                    return raw_text, None, effective_suffix, "Zip: could not read entries."
+            except Exception as exc:
+                raw_text, enc = try_decode(data)
+                return raw_text, None, effective_suffix, f"Zip handling failed ({exc})."
+        else:
+            text, enc = try_decode(data)
+            warning = f"Decoded using {enc} (not utf-8)." if enc != "utf-8" else None
+            return text, None, effective_suffix, warning
+    except Exception as e:
+        raw_text, enc = try_decode(data)
+        return raw_text, None, effective_suffix, f"Error processing upload: {e}; decoded as {enc}."
+
+
+# ── Routes ─────────────────────────────────────────────────────────
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request, provider: str | None = None, model: str | None = None):
     selected = (provider or "auto").strip().lower() or "auto"
@@ -48,9 +148,9 @@ def index(request: Request, provider: str | None = None, model: str | None = Non
     raw_model_pref = (model or "").strip()
     model_pref = raw_model_pref if selected == "gemini" else ""
     return templates.TemplateResponse(
+        request,
         "index.html",
-        {
-            "request": request,
+        context={
             "error": None,
             "providers": SUPPORTED_PROVIDERS,
             "selected_provider": selected,
@@ -68,12 +168,7 @@ async def analyze(
     api_key: str = Form(""),
     model: str = Form(""),
 ):
-    """Analyze uploaded or pasted logs with best-effort decoding and decompression.
-
-    Will attempt gzip/zip detection and try UTF-8, UTF-16, CP1252, Latin-1 decodings.
-    If decoding required a fallback, pass a warning to the template.
-    """
-    # Check if user provided any log data
+    """Analyze uploaded or pasted logs — security findings, MITRE mapping, anomaly detection."""
     selected_provider = (provider or "auto").strip().lower() or "auto"
     if selected_provider not in PROVIDER_LABELS:
         selected_provider = "auto"
@@ -81,144 +176,72 @@ async def analyze(
     model_hint = (model or "").strip()
 
     if selected_provider == "gemini" and not provided_key:
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "error": "Gemini requests require an API key. Please provide your Gemini key to continue.",
-                "providers": SUPPORTED_PROVIDERS,
-                "selected_provider": selected_provider,
-                "selected_model": model_hint,
-            },
-        )
+        return templates.TemplateResponse(request, "index.html", context={
+            "error": "Gemini requires an API key.",
+            "providers": SUPPORTED_PROVIDERS,
+            "selected_provider": selected_provider,
+            "selected_model": model_hint,
+        })
 
     if selected_provider != "gemini":
         model_hint = ""
 
     if (not upload or not upload.filename) and not pasted.strip():
-        return templates.TemplateResponse(
-            "index.html",
-            {
-                "request": request,
-                "error": "Please provide log data by either uploading a file or pasting log text.",
-                "providers": SUPPORTED_PROVIDERS,
-                "selected_provider": selected_provider,
-                "selected_model": model_hint,
-            }
-        )
-    
+        return templates.TemplateResponse(request, "index.html", context={
+            "error": "Please provide data by uploading a file or pasting text.",
+            "providers": SUPPORTED_PROVIDERS,
+            "selected_provider": selected_provider,
+            "selected_model": model_hint,
+        })
+
     decode_warning = None
     raw_text = None
-
-    def try_decode(b: bytes):
-        # try common encodings
-        encodings = ["utf-8", "utf-16", "cp1252", "latin-1"]
-        for enc in encodings:
-            try:
-                return b.decode(enc), enc
-            except Exception:
-                continue
-        # as last resort, latin-1 with replacement
-        return b.decode("latin-1", errors="replace"), "latin-1-replace"
+    effective_suffix = ".log"
+    is_binary = False
 
     if upload and upload.filename:
         data = await upload.read()
-        b = data
-        # check for gzip
-        try:
-            import gzip
-            if b.startswith(b"\x1f\x8b"):
-                try:
-                    dec = gzip.decompress(b)
-                    text, enc = try_decode(dec)
-                    decode_warning = f"File was gzip compressed; decompressed and decoded as {enc}."
-                    raw_text = text
-                except Exception:
-                    # fallback to trying to decode original
-                    text, enc = try_decode(b)
-                    decode_warning = f"Could not fully decompress gzip; decoded raw bytes as {enc}."
-                    raw_text = text
-                
-            elif b.startswith(b"PK\x03\x04"):
-                # zipfile
-                import zipfile, io
-                try:
-                    z = zipfile.ZipFile(io.BytesIO(b))
-                    # find first reasonable text file
-                    names = z.namelist()
-                    content = None
-                    for name in names:
-                        if name.endswith('/'): 
-                            continue
-                        try:
-                            val = z.read(name)
-                            txt, enc = try_decode(val)
-                            content = txt
-                            decode_warning = f"Zip archive; using file {name} decoded as {enc}."
-                            break
-                        except Exception:
-                            continue
-                    if content is None:
-                        raw_text, enc = try_decode(b)
-                        decode_warning = "Zip archive could not be read; decoded raw bytes with fallback."
-                    else:
-                        raw_text = content
-                except Exception:
-                    raw_text, enc = try_decode(b)
-                    decode_warning = f"Zip handling failed; decoded raw bytes as {enc}."
-            else:
-                # not compressed — try decoding
-                text, enc = try_decode(b)
-                raw_text = text
-                if enc != "utf-8":
-                    decode_warning = f"Decoded using {enc} (not utf-8)."
-        except Exception as e:
-            # any unexpected error — attempt simple decode
-            raw_text, enc = try_decode(b)
-            decode_warning = f"Unexpected error while processing upload: {e}; decoded as {enc}."
+        raw_text, raw_bytes, effective_suffix, decode_warning = _handle_upload(data, upload.filename)
 
-        # write to temp file for analyzer
-        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tf:
-            tf.write(raw_text)
-            path = Path(tf.name)
+        if raw_bytes is not None:
+            # Binary file (pcap) - write as binary
+            is_binary = True
+            with tempfile.NamedTemporaryFile(delete=False, suffix=effective_suffix) as tf:
+                tf.write(raw_bytes)
+                path = Path(tf.name)
+            raw_text = f"[Binary file: {upload.filename}, {len(raw_bytes)} bytes]"
+        else:
+            with tempfile.NamedTemporaryFile("w", delete=False, suffix=effective_suffix, encoding="utf-8") as tf:
+                tf.write(raw_text or "")
+                path = Path(tf.name)
     else:
-        # pasted text path
         raw_text = pasted
-        path = None
-        with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tf:
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".log", encoding="utf-8") as tf:
             tf.write(pasted)
             path = Path(tf.name)
-    # Safety: if user placed a Perplexity key into OPENAI_API_KEY (prefix pplx-),
-    # make it available as PERPLEXITY_API_KEY so the adapter will prefer Perplexity
-    # (avoids accidentally calling OpenAI with a non-OpenAI key).
+
+    # Detect file type
+    file_type = detect_file_type(path)
+
+    # Perplexity key fixup
     try:
         openai_key = os.getenv("OPENAI_API_KEY")
         pplx = os.getenv("PERPLEXITY_API_KEY")
         if openai_key and openai_key.startswith("pplx-") and not pplx:
             os.environ["PERPLEXITY_API_KEY"] = openai_key
-            logger.info("Detected pplx- key in OPENAI_API_KEY; setting PERPLEXITY_API_KEY for this process to prefer Perplexity SDK.")
     except Exception:
         pass
 
-    # Run analysis for both upload and pasted text paths. Ensure analysis is defined
-    # even if LLM fails, so the template can render heuristics and any error notes.
+    # Run analysis
     try:
         analysis = analyze_logs_with_llm(
-            path,
-            provider=selected_provider,
-            api_key=provided_key or None,
-            model=model_hint or None,
+            path, provider=selected_provider,
+            api_key=provided_key or None, model=model_hint or None,
         )
     except Exception as e:
         logger.exception("Analysis failed: %s", e)
         analysis = {"findings": [f"(Error) analysis failed: {e}"], "llm_text": None, "llm_provider": None}
 
-    # Keep concise info logs: provider and number of findings
-    try:
-        n = len(analysis.get("findings", [])) if isinstance(analysis, dict) else 0
-        logger.info("Analysis complete: provider=%s findings=%d", analysis.get("llm_provider"), n)
-    except Exception:
-        logger.debug("Analysis completed but could not compute summary", exc_info=True)
     findings = analysis.get("findings", [])
     llm_text = analysis.get("llm_text")
     llm_provider = analysis.get("llm_provider")
@@ -227,36 +250,154 @@ async def analyze(
     model_used = analysis.get("model_used")
     token_usage = analysis.get("token_usage")
 
-    # MITRE ATT&CK enrichment
+    # MITRE enrichment
     mitre_mappings = enrich_findings_with_mitre(findings)
 
-    # Dataset summary (if CIC-IDS2017 CSV was uploaded)
-    dataset_summary = None
+    # Parse records for pipeline
+    records = parse_log(path)
+
+    # Run anomaly detection pipeline
+    anomaly_result = None
+    try:
+        anomaly_result = run_isolation_forest(records)
+        if anomaly_result and anomaly_result.get("anomaly_count", 0) > 0:
+            findings.append(
+                f"Anomaly Detection: {anomaly_result['anomaly_count']} of "
+                f"{anomaly_result['total_records']} records flagged as anomalous "
+                f"by Isolation Forest"
+            )
+    except Exception as e:
+        logger.warning("Anomaly detection skipped: %s", e)
+
+    # Dataset overview
+    ds_overview = dataset_overview(records)
+
+    # CIC-IDS2017 specific
+    dataset_summary_data = None
+    cicids_rows = None
     if is_cicids_csv(path):
         try:
             from .dataset_loader import load_cicids_csv, dataset_summary as ds_summary
-            _, rows = load_cicids_csv(path, max_rows=10000)
-            dataset_summary = ds_summary(rows)
+            _, cicids_rows = load_cicids_csv(path, max_rows=10000)
+            dataset_summary_data = ds_summary(cicids_rows)
         except Exception:
             pass
 
-    return templates.TemplateResponse(
-        "results.html",
-        {
-            "request": request,
-            "findings": findings,
-            "raw": raw_text,
-            "decode_warning": decode_warning,
-            "llm_text": llm_text,
-            "llm_provider": llm_provider,
-            "llm_provider_display": _provider_display(llm_provider),
-            "requested_provider_display": _provider_display(requested_provider),
-            "requested_provider": requested_provider,
-            "requested_model": requested_model,
-            "model_used": model_used,
-            "token_usage": token_usage,
-            "analysis": analysis,
-            "mitre_mappings": mitre_mappings,
-            "dataset_summary": dataset_summary,
-        },
+    # Merge overviews
+    summary_for_charts = dataset_summary_data or ds_overview
+
+    # Charts
+    chart_data = generate_chart_data(
+        rows=cicids_rows or records,
+        findings=findings,
+        dataset_summary=summary_for_charts,
+        anomaly_result=anomaly_result,
     )
+
+    return templates.TemplateResponse(request, "results.html", context={
+        "findings": findings,
+        "raw": raw_text,
+        "decode_warning": decode_warning,
+        "llm_text": llm_text,
+        "llm_provider": llm_provider,
+        "llm_provider_display": _provider_display(llm_provider),
+        "requested_provider_display": _provider_display(requested_provider),
+        "requested_provider": requested_provider,
+        "requested_model": requested_model,
+        "model_used": model_used,
+        "token_usage": token_usage,
+        "analysis": analysis,
+        "mitre_mappings": mitre_mappings,
+        "dataset_summary": summary_for_charts,
+        "chart_data_json": json.dumps(chart_data),
+        "anomaly_result": anomaly_result,
+        "file_type": file_type,
+        "filename": upload.filename if upload and upload.filename else "pasted_text",
+    })
+
+
+@app.post("/visualize", response_class=HTMLResponse)
+async def visualize(
+    request: Request,
+    upload: UploadFile | None = File(None),
+    pasted: str = Form(""),
+):
+    """Generate charts and statistical analysis on a dataset — no LLM needed."""
+    if (not upload or not upload.filename) and not pasted.strip():
+        return templates.TemplateResponse(request, "index.html", context={
+            "error": "Please provide data for visualization.",
+            "providers": SUPPORTED_PROVIDERS,
+            "selected_provider": "auto",
+            "selected_model": "",
+        })
+
+    decode_warning = None
+    raw_text = None
+    is_binary = False
+
+    if upload and upload.filename:
+        data = await upload.read()
+        raw_text, raw_bytes, effective_suffix, decode_warning = _handle_upload(data, upload.filename)
+        if raw_bytes is not None:
+            is_binary = True
+            with tempfile.NamedTemporaryFile(delete=False, suffix=effective_suffix) as tf:
+                tf.write(raw_bytes)
+                path = Path(tf.name)
+            raw_text = f"[Binary file: {upload.filename}, {len(raw_bytes)} bytes]"
+        else:
+            with tempfile.NamedTemporaryFile("w", delete=False, suffix=effective_suffix, encoding="utf-8") as tf:
+                tf.write(raw_text or "")
+                path = Path(tf.name)
+    else:
+        raw_text = pasted
+        with tempfile.NamedTemporaryFile("w", delete=False, suffix=".csv", encoding="utf-8") as tf:
+            tf.write(pasted)
+            path = Path(tf.name)
+
+    file_type = detect_file_type(path)
+    records = parse_log(path)
+
+    # Compute statistics
+    stats = compute_statistics(records)
+
+    # Run anomaly detection
+    anomaly_result = None
+    try:
+        anomaly_result = run_isolation_forest(records)
+    except Exception as e:
+        logger.warning("Anomaly detection skipped: %s", e)
+
+    # Dataset overview
+    ds_overview = dataset_overview(records)
+
+    # CIC-IDS specific
+    dataset_summary_data = None
+    cicids_rows = None
+    if is_cicids_csv(path):
+        try:
+            from .dataset_loader import load_cicids_csv, dataset_summary as ds_summary
+            _, cicids_rows = load_cicids_csv(path, max_rows=10000)
+            dataset_summary_data = ds_summary(cicids_rows)
+        except Exception:
+            pass
+
+    summary_for_charts = dataset_summary_data or ds_overview
+
+    chart_data = generate_chart_data(
+        rows=cicids_rows or records,
+        findings=None,
+        dataset_summary=summary_for_charts,
+        anomaly_result=anomaly_result,
+        statistics=stats,
+    )
+
+    return templates.TemplateResponse(request, "visualize.html", context={
+        "chart_data_json": json.dumps(chart_data),
+        "statistics": stats,
+        "dataset_summary": summary_for_charts,
+        "anomaly_result": anomaly_result,
+        "decode_warning": decode_warning,
+        "file_type": file_type,
+        "filename": upload.filename if upload and upload.filename else "pasted_data",
+        "total_records": len(records),
+    })
