@@ -1,4 +1,4 @@
-"""Tests for CIC-IDS2017 dataset loading, parsing, analysis, evaluation,
+"""Tests for dataset loading, parsing, analysis, evaluation,
 MITRE ATT&CK mapping, and PCAP/pipeline support."""
 
 import tempfile
@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from src.dataset_loader import (
-    load_cicids_csv,
+    load_dataset_csv,
     normalize_label,
     dataset_summary,
     extract_flow_features,
@@ -19,7 +19,7 @@ from src.mitre_mapping import (
     enrich_findings_with_mitre,
     TECHNIQUES,
 )
-from src.parsers import is_cicids_csv, parse_cicids_csv, parse_log, detect_file_type
+from src.parsers import is_labeled_dataset_csv, parse_dataset_csv, parse_log, detect_file_type
 from src.analyzer import heuristic_detect, _detect_network_attacks, _detect_pcap_attacks
 from src.eval import (
     precision_recall_f1,
@@ -28,7 +28,7 @@ from src.eval import (
     confusion_matrix,
 )
 
-# Path to the sample dataset created from full CIC-IDS2017
+# Path to the sample dataset
 SAMPLE_DIR = Path(__file__).resolve().parents[1] / "samples"
 SAMPLE_CSV = SAMPLE_DIR / "cicids2017_sample.csv"
 
@@ -79,7 +79,7 @@ class TestNormalizeLabel:
         assert normalize_label("DDoS_variant") == "DDoS"
 
 
-class TestLoadCicidsCsv:
+class TestLoadDatasetCsv:
     @pytest.fixture
     def mini_csv(self, tmp_path):
         csv_content = (
@@ -95,30 +95,30 @@ class TestLoadCicidsCsv:
         return p
 
     def test_load_basic(self, mini_csv):
-        headers, rows = load_cicids_csv(mini_csv)
+        headers, rows = load_dataset_csv(mini_csv)
         assert len(rows) == 3
         assert "Destination Port" in headers
         assert "Label" in headers
 
     def test_categories_assigned(self, mini_csv):
-        _, rows = load_cicids_csv(mini_csv)
+        _, rows = load_dataset_csv(mini_csv)
         categories = [r["_category"] for r in rows]
         assert "Brute Force" in categories
         assert "BENIGN" in categories
         assert "DDoS" in categories
 
     def test_max_rows(self, mini_csv):
-        _, rows = load_cicids_csv(mini_csv, max_rows=2)
+        _, rows = load_dataset_csv(mini_csv, max_rows=2)
         assert len(rows) == 2
 
     def test_attack_only(self, mini_csv):
-        _, rows = load_cicids_csv(mini_csv, attack_only=True)
+        _, rows = load_dataset_csv(mini_csv, attack_only=True)
         assert all(r["_category"] != "BENIGN" for r in rows)
         assert len(rows) == 2
 
     @pytest.mark.skipif(not SAMPLE_CSV.exists(), reason="Sample dataset not found")
     def test_load_real_sample(self):
-        headers, rows = load_cicids_csv(SAMPLE_CSV, max_rows=100)
+        headers, rows = load_dataset_csv(SAMPLE_CSV, max_rows=100)
         assert len(rows) > 0
         assert "Label" in headers
 
@@ -156,15 +156,15 @@ class TestExtractFlowFeatures:
 
 # ── Parser Tests ──────────────────────────────────────────────────────
 
-class TestCicidsParser:
+class TestDatasetParser:
     @pytest.fixture
-    def cicids_csv(self, tmp_path):
+    def dataset_csv(self, tmp_path):
         csv_content = (
             " Destination Port, Flow Duration, Total Fwd Packets, Label\n"
             "22, 1000, 5, SSH-Patator\n"
             "80, 500, 2, BENIGN\n"
         )
-        p = tmp_path / "test_cicids.csv"
+        p = tmp_path / "test_dataset.csv"
         p.write_text(csv_content, encoding="utf-8")
         return p
 
@@ -175,24 +175,24 @@ class TestCicidsParser:
         p.write_text(csv_content, encoding="utf-8")
         return p
 
-    def test_is_cicids(self, cicids_csv):
-        assert is_cicids_csv(cicids_csv) is True
+    def test_is_labeled_dataset(self, dataset_csv):
+        assert is_labeled_dataset_csv(dataset_csv) is True
 
-    def test_is_not_cicids(self, regular_csv):
-        assert is_cicids_csv(regular_csv) is False
+    def test_is_not_labeled_dataset(self, regular_csv):
+        assert is_labeled_dataset_csv(regular_csv) is False
 
-    def test_parse_cicids_records(self, cicids_csv):
-        records = parse_cicids_csv(cicids_csv)
+    def test_parse_dataset_records(self, dataset_csv):
+        records = parse_dataset_csv(dataset_csv)
         assert len(records) == 2
-        assert records[0]["type"] == "cicids"
+        assert records[0]["type"] == "dataset"
         assert records[0]["_category"] == "Brute Force"
         assert records[1]["_category"] == "BENIGN"
         assert "raw" in records[0]
 
-    def test_parse_log_autodetect(self, cicids_csv):
-        records = parse_log(cicids_csv)
+    def test_parse_log_autodetect(self, dataset_csv):
+        records = parse_log(dataset_csv)
         assert len(records) == 2
-        assert records[0]["type"] == "cicids"
+        assert records[0]["type"] == "dataset"
 
 
 # ── MITRE ATT&CK Mapping Tests ───────────────────────────────────────
@@ -257,10 +257,10 @@ class TestMitreMapping:
 class TestNetworkAnalyzer:
     def test_detect_brute_force(self):
         records = [
-            {"type": "cicids", "raw": "flow", "_label": "SSH-Patator", "_category": "Brute Force",
+            {"type": "dataset", "raw": "flow", "_label": "SSH-Patator", "_category": "Brute Force",
              "Destination Port": "22", "Flow Packets/s": "100", "SYN Flag Count": "1", "Flow Bytes/s": "5000"},
         ] * 10 + [
-            {"type": "cicids", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
+            {"type": "dataset", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
              "Destination Port": "80", "Flow Packets/s": "50", "SYN Flag Count": "0", "Flow Bytes/s": "3000"},
         ] * 5
         findings = heuristic_detect(records)
@@ -268,10 +268,10 @@ class TestNetworkAnalyzer:
 
     def test_detect_ddos(self):
         records = [
-            {"type": "cicids", "raw": "flow", "_label": "DDoS", "_category": "DDoS",
+            {"type": "dataset", "raw": "flow", "_label": "DDoS", "_category": "DDoS",
              "Destination Port": "80", "Flow Packets/s": "15000", "SYN Flag Count": "10", "Flow Bytes/s": "2000000"},
         ] * 20 + [
-            {"type": "cicids", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
+            {"type": "dataset", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
              "Destination Port": "443", "Flow Packets/s": "50", "SYN Flag Count": "0", "Flow Bytes/s": "3000"},
         ] * 5
         findings = heuristic_detect(records)
@@ -279,11 +279,11 @@ class TestNetworkAnalyzer:
 
     def test_detect_portscan(self):
         records = [
-            {"type": "cicids", "raw": "flow", "_label": "PortScan", "_category": "Reconnaissance",
+            {"type": "dataset", "raw": "flow", "_label": "PortScan", "_category": "Reconnaissance",
              "Destination Port": str(i), "Flow Packets/s": "500", "SYN Flag Count": "2", "Flow Bytes/s": "1000"}
             for i in range(1, 21)
         ] + [
-            {"type": "cicids", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
+            {"type": "dataset", "raw": "flow", "_label": "BENIGN", "_category": "BENIGN",
              "Destination Port": "80", "Flow Packets/s": "50", "SYN Flag Count": "0", "Flow Bytes/s": "3000"},
         ] * 5
         findings = heuristic_detect(records)
@@ -378,7 +378,7 @@ class TestIntegration:
         """End-to-end: load sample CSV → parse → analyze → get findings."""
         records = parse_log(SAMPLE_CSV)
         assert len(records) > 0
-        assert records[0]["type"] == "cicids"
+        assert records[0]["type"] == "dataset"
 
         findings = heuristic_detect(records)
         assert len(findings) > 0

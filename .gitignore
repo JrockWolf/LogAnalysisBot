@@ -1,5 +1,6 @@
 .env
 __pycache__/
 *.py[cod]
+.venv/
+*.zip
 dataset/
-dataset.zip

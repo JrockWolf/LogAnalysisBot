@@ -3,7 +3,7 @@
 Supported formats:
 - Plain text logs (syslog, firewall, generic)
 - JSON / JSONL
-- CSV (generic & CIC-IDS2017)
+- CSV (generic & labeled datasets)
 - PCAP / PCAPNG (Wireshark captures via scapy)
 """
 
@@ -69,11 +69,11 @@ def parse_csv_log(path: Path) -> List[Dict[str, Any]]:
 
 
 # ---------------------------------------------------------------------------
-# CIC-IDS2017 specific CSV
+# Labeled dataset CSV
 # ---------------------------------------------------------------------------
 
-def is_cicids_csv(path: Path) -> bool:
-    """Detect whether a CSV file is a CIC-IDS2017 dataset file."""
+def is_labeled_dataset_csv(path: Path) -> bool:
+    """Detect whether a CSV file is a labeled intrusion detection dataset."""
     try:
         with path.open("r", encoding="utf-8", errors="ignore") as f:
             header = f.readline().lower()
@@ -81,9 +81,12 @@ def is_cicids_csv(path: Path) -> bool:
     except Exception:
         return False
 
+# Backward-compatible alias
+is_cicids_csv = is_labeled_dataset_csv
 
-def parse_cicids_csv(path: Path) -> List[Dict[str, Any]]:
-    """Parse a CIC-IDS2017 CSV and produce records with a *raw* key for the analyzer."""
+
+def parse_dataset_csv(path: Path) -> List[Dict[str, Any]]:
+    """Parse a labeled dataset CSV and produce records with a *raw* key for the analyzer."""
     from .dataset_loader import normalize_label
     records: List[Dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="ignore") as f:
@@ -106,13 +109,16 @@ def parse_cicids_csv(path: Path) -> List[Dict[str, Any]]:
             record: Dict[str, Any] = {
                 "_line": lineno,
                 "raw": raw,
-                "type": "cicids",
+                "type": "dataset",
                 "_label": label,
                 "_category": category,
             }
             record.update(stripped)
             records.append(record)
     return records
+
+# Backward-compatible alias
+parse_cicids_csv = parse_dataset_csv
 
 
 # ---------------------------------------------------------------------------
@@ -220,8 +226,8 @@ def detect_file_type(path: Path) -> str:
     if suf in (".jsonl", ".json"):
         return "json"
     if suf in (".csv",):
-        if is_cicids_csv(path):
-            return "cicids"
+        if is_labeled_dataset_csv(path):
+            return "dataset"
         return "csv"
     return "text"
 
@@ -233,8 +239,8 @@ def parse_log(path: Path) -> List[Dict[str, Any]]:
         return parse_pcap(path)
     if ftype == "json":
         return parse_json_log(path)
-    if ftype == "cicids":
-        return parse_cicids_csv(path)
+    if ftype == "dataset":
+        return parse_dataset_csv(path)
     if ftype == "csv":
         return parse_csv_log(path)
     return parse_text_log(path)

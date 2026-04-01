@@ -1,14 +1,14 @@
 # Log Analysis Helper Bot
 
-An LLM-powered log analysis assistant for security education and small SOCs, with built-in support for the **CIC-IDS2017** intrusion detection dataset and **MITRE ATT&CK** technique mapping.
+An LLM-powered log analysis assistant for security education and small SOCs, with built-in support for **all labeled intrusion detection datasets** and **MITRE ATT&CK** technique mapping.
 
 ## Features
 
-- **CIC-IDS2017 Dataset Support** — Load, parse, and analyze the Canadian Institute for Cybersecurity IDS 2017 dataset (network flow CSVs with 78+ features)
+- **Universal Dataset Support** — Load, parse, and analyze any labeled intrusion detection dataset (network flow CSVs with features and a Label column)
 - **MITRE ATT&CK Mapping** — Automatically map detected attacks to MITRE ATT&CK techniques with IDs, tactics, and reference URLs
 - **Network Attack Detection** — Heuristic-based detection for DDoS, DoS, brute force, port scanning, web attacks, bot activity, and infiltration
 - **Evaluation Pipeline** — Binary and per-class metrics (precision, recall, F1, accuracy, FPR), confusion matrices, and formatted reports
-- Parsers for text, JSON, CSV, and CIC-IDS2017 network flow logs
+- Parsers for text, JSON, CSV, and labeled network flow logs
 - Simulated log generator with common security events
 - LLM adapter for OpenAI, Perplexity, Gemini, Deepseek, and HuggingFace local models
 - Analyzer with deterministic heuristics and optional LLM-enhanced summaries
@@ -46,20 +46,20 @@ python -m src.cli analyze samples/sample_1.log
 ### Analyze with MITRE ATT&CK mapping
 
 ```bash
-python -m src.cli analyze samples/cicids2017_sample.csv --mitre
+python -m src.cli analyze samples/sample.csv --mitre
 ```
 
-### Evaluate detection on CIC-IDS2017 dataset
+### Evaluate detection on a labeled dataset
 
 ```bash
-python -m src.cli evaluate samples/cicids2017_sample.csv
-python -m src.cli evaluate samples/cicids2017_sample.csv --output results.json
+python -m src.cli evaluate samples/dataset_sample.csv
+python -m src.cli evaluate samples/dataset_sample.csv --output results.json
 ```
 
 ### Dataset info
 
 ```bash
-python -m src.cli dataset-info samples/cicids2017_sample.csv
+python -m src.cli dataset-info samples/dataset_sample.csv
 ```
 
 ### Generate synthetic logs
@@ -83,9 +83,11 @@ python -m src.webapp
 
 See [docs/TRANSLATOR.md](docs/TRANSLATOR.md) for translation documentation.
 
-## CIC-IDS2017 Dataset
+## Dataset Support
 
-The project supports the [CIC-IDS2017](https://www.unb.ca/cic/datasets/ids-2017.html) dataset from the Canadian Institute for Cybersecurity. This dataset contains labeled network traffic flows with 78 features covering:
+The project supports any labeled intrusion detection dataset in CSV format with a `Label` column and network flow features. Datasets are auto-detected by column headers (e.g., `Label`, `Flow Duration`, `Destination Port`). Compatible datasets include CIC-IDS2017, CSE-CIC-IDS2018, UNSW-NB15, and others with similar structure.
+
+Supported attack categories:
 
 | Category | Attack Types |
 |---|---|
@@ -97,7 +99,7 @@ The project supports the [CIC-IDS2017](https://www.unb.ca/cic/datasets/ids-2017.
 | Botnet | Bot traffic |
 | Infiltration | Infiltration attacks |
 
-Sample extracts are included in `samples/` for testing without the full dataset (~885 MB).
+Sample extracts can be placed in `samples/` for testing.
 
 ## Architecture
 
@@ -105,9 +107,9 @@ Sample extracts are included in `samples/` for testing without the full dataset 
 src/
 ├── cli.py              # Typer CLI (analyze, evaluate, dataset-info, generate, translate)
 ├── webapp.py           # FastAPI web interface
-├── parsers.py          # Log parsers (text, JSON, CSV, CIC-IDS2017)
+├── parsers.py          # Log parsers (text, JSON, CSV, labeled datasets)
 ├── analyzer.py         # Heuristic + LLM analysis pipeline
-├── dataset_loader.py   # CIC-IDS2017 CSV loader and label normalization
+├── dataset_loader.py   # Dataset CSV loader and label normalization
 ├── mitre_mapping.py    # MITRE ATT&CK technique mapping
 ├── eval.py             # Evaluation metrics (binary, per-class, confusion matrix)
 ├── llm_adapter.py      # Multi-provider LLM interface
@@ -127,7 +129,7 @@ python -m pytest -q
 
 - Provider detection precedence: Perplexity → Gemini → Deepseek → OpenAI → HuggingFace local. Force a provider with `LLM_PROVIDER=openai|perplexity|transformers`.
 - The analyzer produces findings via deterministic heuristics without an LLM; LLM enhances summaries when available.
-- CIC-IDS2017 CSV files are auto-detected by column headers — no special flags needed.
+- Labeled dataset CSV files are auto-detected by column headers — no special flags needed.
 
 ## Security and Ethics
 

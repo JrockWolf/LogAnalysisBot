@@ -47,10 +47,10 @@ def analyze(
 
 @app.command()
 def evaluate(
-    path: Path = typer.Argument(..., help="Path to CIC-IDS2017 CSV sample file"),
+    path: Path = typer.Argument(..., help="Path to labeled dataset CSV sample file"),
     output: Path = typer.Option(None, "--output", "-o", help="Save JSON results to file"),
 ):
-    """Evaluate detection performance against a labeled CIC-IDS2017 dataset sample."""
+    """Evaluate detection performance against a labeled dataset sample."""
     from .eval import evaluate_dataset, format_evaluation_report
 
     typer.echo(f"Evaluating: {path}")
@@ -67,14 +67,14 @@ def evaluate(
 
 @app.command("dataset-info")
 def dataset_info(
-    path: Path = typer.Argument(..., help="Path to CIC-IDS2017 CSV file"),
+    path: Path = typer.Argument(..., help="Path to labeled dataset CSV file"),
     max_rows: int = typer.Option(10000, "--max-rows", "-n", help="Max rows to read"),
 ):
-    """Show summary of a CIC-IDS2017 dataset CSV file."""
-    from .dataset_loader import load_cicids_csv, dataset_summary
+    """Show summary of a labeled dataset CSV file."""
+    from .dataset_loader import load_dataset_csv, dataset_summary
 
     typer.echo(f"Loading: {path}")
-    headers, rows = load_cicids_csv(path, max_rows=max_rows)
+    headers, rows = load_dataset_csv(path, max_rows=max_rows)
     summary = dataset_summary(rows)
 
     typer.echo(f"\nTotal flows: {summary['total_flows']}")

@@ -1,8 +1,7 @@
-"""Loader for CIC-IDS2017 network intrusion detection dataset.
+"""Loader for labeled network intrusion detection datasets.
 
-Handles the large CSV files from the Canadian Institute for Cybersecurity's
-IDS 2017 dataset.  Each row represents a network flow with 78 features and
-a *Label* column (BENIGN or attack type).
+Handles CSV files from intrusion detection datasets where each row represents
+a network flow with features and a *Label* column (BENIGN or attack type).
 
 Supported attack labels
 -----------------------
@@ -84,7 +83,7 @@ def _safe_float(v: str) -> float:
 
 
 def normalize_label(raw_label: str) -> str:
-    """Map raw CIC-IDS2017 label to a canonical category string."""
+    """Map a raw dataset label to a canonical category string."""
     raw = raw_label.strip()
     if raw in LABEL_CATEGORY:
         return LABEL_CATEGORY[raw]
@@ -113,12 +112,12 @@ def normalize_label(raw_label: str) -> str:
     return raw  # unknown
 
 
-def load_cicids_csv(
+def load_dataset_csv(
     path: Path,
     max_rows: int = 0,
     attack_only: bool = False,
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Load a CIC-IDS2017 CSV file.
+    """Load a labeled dataset CSV file.
 
     Returns (header_list, rows) where each row is a dict with stripped keys
     and a special ``_category`` key for the normalized attack category, plus
@@ -171,14 +170,14 @@ def load_dataset_directory(
     directory: Path,
     max_per_file: int = 5000,
 ) -> Tuple[List[str], List[Dict[str, Any]]]:
-    """Load all CIC-IDS2017 CSV files from a directory.
+    """Load all labeled dataset CSV files from a directory.
 
     Returns combined (headers, rows).
     """
     all_rows: List[Dict[str, Any]] = []
     headers: List[str] = []
     for csv_path in sorted(directory.glob("*.csv")):
-        h, rows = load_cicids_csv(csv_path, max_rows=max_per_file)
+        h, rows = load_dataset_csv(csv_path, max_rows=max_per_file)
         if not headers:
             headers = h
         all_rows.extend(rows)
@@ -203,6 +202,10 @@ def dataset_summary(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         "label_distribution": dict(sorted(label_counts.items(), key=lambda x: -x[1])),
         "category_distribution": dict(sorted(category_counts.items(), key=lambda x: -x[1])),
     }
+
+
+# Backward-compatible alias
+load_cicids_csv = load_dataset_csv
 
 
 def extract_flow_features(row: Dict[str, Any]) -> Dict[str, float]:

@@ -1,7 +1,7 @@
 """Evaluation metrics for log analysis detection performance.
 
 Provides precision, recall, F1, confusion matrix, and per-class metrics
-for evaluating the bot against labeled datasets like CIC-IDS2017.
+for evaluating the bot against labeled datasets.
 """
 
 from __future__ import annotations
@@ -116,7 +116,7 @@ def confusion_matrix(
 
 
 def evaluate_dataset(path: Path) -> Dict[str, Any]:
-    """Run full evaluation on a CIC-IDS2017 CSV sample.
+    """Run full evaluation on a labeled dataset CSV sample.
 
     Returns comprehensive metrics including binary and per-class results.
     """
@@ -130,8 +130,8 @@ def evaluate_dataset(path: Path) -> Dict[str, Any]:
     bin_metrics = binary_metrics(pred, gold)
 
     # Per-category evaluation: map each row to its category
-    from .dataset_loader import load_cicids_csv
-    _, rows = load_cicids_csv(path, max_rows=50000)
+    from .dataset_loader import load_dataset_csv
+    _, rows = load_dataset_csv(path, max_rows=50000)
     gold_cats = [r["_category"] for r in rows]
     pred_cats = gold_cats  # heuristic uses labels directly for now
     class_metrics = per_class_metrics(pred_cats, gold_cats)

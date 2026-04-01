@@ -235,7 +235,7 @@ def dataset_overview(records: List[Dict[str, Any]]) -> Dict[str, Any]:
             if dip:
                 dst_ips[dip] = dst_ips.get(dip, 0) + 1
 
-    # For CIC-IDS data
+    # For labeled dataset data
     categories: Dict[str, int] = {}
     for r in records:
         cat = r.get("_category")

@@ -1,6 +1,6 @@
 """Generate chart data structures for the web UI (consumed by Chart.js).
 
-Works with any supported input format: PCAP, CSV, JSON logs, CIC-IDS2017, etc.
+Works with any supported input format: PCAP, CSV, JSON logs, labeled datasets, etc.
 """
 
 from __future__ import annotations
@@ -117,8 +117,8 @@ def generate_chart_data(
                 "colors": CHART_COLORS[: len(rtypes)],
             }
 
-    # ── Row-level CIC-IDS2017 charts ──────────────────────────────────
-    if rows and rows[0].get("type") == "cicids":
+    # ── Row-level labeled dataset charts ────────────────────────────────
+    if rows and rows[0].get("type") == "dataset":
         port_counts: Dict[str, int] = {}
         bytes_per_cat: Dict[str, float] = {}
         pkts_per_cat: Dict[str, float] = {}

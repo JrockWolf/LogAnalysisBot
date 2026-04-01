@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pathlib import Path
 from .analyzer import analyze_logs_with_llm, heuristic_detect
-from .parsers import parse_log, is_cicids_csv, detect_file_type
+from .parsers import parse_log, is_labeled_dataset_csv, detect_file_type
 from .mitre_mapping import enrich_findings_with_mitre
 from .charts import generate_chart_data
 from .pipeline import run_isolation_forest, compute_statistics, dataset_overview
@@ -272,14 +272,14 @@ async def analyze(
     # Dataset overview
     ds_overview = dataset_overview(records)
 
-    # CIC-IDS2017 specific
+    # Labeled dataset specific
     dataset_summary_data = None
-    cicids_rows = None
-    if is_cicids_csv(path):
+    ds_rows = None
+    if is_labeled_dataset_csv(path):
         try:
-            from .dataset_loader import load_cicids_csv, dataset_summary as ds_summary
-            _, cicids_rows = load_cicids_csv(path, max_rows=10000)
-            dataset_summary_data = ds_summary(cicids_rows)
+            from .dataset_loader import load_dataset_csv, dataset_summary as ds_summary
+            _, ds_rows = load_dataset_csv(path, max_rows=10000)
+            dataset_summary_data = ds_summary(ds_rows)
         except Exception:
             pass
 
@@ -288,7 +288,7 @@ async def analyze(
 
     # Charts
     chart_data = generate_chart_data(
-        rows=cicids_rows or records,
+        rows=ds_rows or records,
         findings=findings,
         dataset_summary=summary_for_charts,
         anomaly_result=anomaly_result,
@@ -370,21 +370,21 @@ async def visualize(
     # Dataset overview
     ds_overview = dataset_overview(records)
 
-    # CIC-IDS specific
+    # Labeled dataset specific
     dataset_summary_data = None
-    cicids_rows = None
-    if is_cicids_csv(path):
+    ds_rows = None
+    if is_labeled_dataset_csv(path):
         try:
-            from .dataset_loader import load_cicids_csv, dataset_summary as ds_summary
-            _, cicids_rows = load_cicids_csv(path, max_rows=10000)
-            dataset_summary_data = ds_summary(cicids_rows)
+            from .dataset_loader import load_dataset_csv, dataset_summary as ds_summary
+            _, ds_rows = load_dataset_csv(path, max_rows=10000)
+            dataset_summary_data = ds_summary(ds_rows)
         except Exception:
             pass
 
     summary_for_charts = dataset_summary_data or ds_overview
 
     chart_data = generate_chart_data(
-        rows=cicids_rows or records,
+        rows=ds_rows or records,
         findings=None,
         dataset_summary=summary_for_charts,
         anomaly_result=anomaly_result,

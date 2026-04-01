@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Dict, Any, Optional
-from .parsers import parse_log, is_cicids_csv
+from .parsers import parse_log, is_labeled_dataset_csv
 from .llm_adapter import LLMAdapter
 from .mitre_mapping import enrich_findings_with_mitre, map_category_to_mitre
 import re
@@ -33,11 +33,11 @@ def _safe_float(v: Any) -> float:
 
 
 # ---------------------------------------------------------------------------
-# CIC-IDS2017 network-flow heuristic detection
+# Network-flow heuristic detection (labeled datasets)
 # ---------------------------------------------------------------------------
 
 def _detect_network_attacks(records: List[Dict[str, Any]]) -> List[str]:
-    """Heuristic detection for CIC-IDS2017 network flow records."""
+    """Heuristic detection for network flow records from labeled datasets."""
     findings: List[str] = []
     attack_counts: Dict[str, int] = {}
     total = len(records)
@@ -277,8 +277,8 @@ def heuristic_detect(records: List[Dict[str, Any]]) -> List[str]:
     if not records:
         return findings
 
-    # Check if these are CIC-IDS2017 records (have _category key)
-    if records[0].get("type") == "cicids":
+    # Check if these are labeled dataset records (have _category key)
+    if records[0].get("type") == "dataset":
         return _detect_network_attacks(records)
 
     # Check if these are PCAP records
@@ -512,14 +512,14 @@ Log entries:
 
 
 def analyze_dataset(path: Path) -> Dict[str, Any]:
-    """Analyze a CIC-IDS2017 CSV file and return structured results with MITRE mappings.
+    """Analyze a labeled dataset CSV file and return structured results with MITRE mappings.
 
     Returns a dict with findings, dataset_summary, mitre_mappings, and
     predicted vs actual labels for evaluation.
     """
-    from .dataset_loader import load_cicids_csv, dataset_summary, normalize_label
+    from .dataset_loader import load_dataset_csv, dataset_summary, normalize_label
 
-    headers, rows = load_cicids_csv(path, max_rows=50000)
+    headers, rows = load_dataset_csv(path, max_rows=50000)
     records = parse_log(path)
     findings = heuristic_detect(records)
 

@@ -29,7 +29,7 @@ class MitreTechnique:
         }
 
 
-# ---- ATT&CK Technique Catalogue (subset relevant to CIC-IDS2017) ----
+# ---- ATT&CK Technique Catalogue (subset relevant to intrusion detection) ----
 
 TECHNIQUES: Dict[str, MitreTechnique] = {
     "T1110": MitreTechnique(
