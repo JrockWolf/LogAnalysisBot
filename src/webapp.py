@@ -11,7 +11,6 @@ from .pipeline import run_isolation_forest, compute_statistics, dataset_overview
 import tempfile
 import logging
 import os
-import json
 
 SUPPORTED_PROVIDERS = [
     ("auto", "Automatic (use environment or supplied key)"),
@@ -309,7 +308,7 @@ async def analyze(
         "analysis": analysis,
         "mitre_mappings": mitre_mappings,
         "dataset_summary": summary_for_charts,
-        "chart_data_json": json.dumps(chart_data),
+        "chart_data": chart_data,
         "anomaly_result": anomaly_result,
         "file_type": file_type,
         "filename": upload.filename if upload and upload.filename else "pasted_text",
@@ -392,7 +391,7 @@ async def visualize(
     )
 
     return templates.TemplateResponse(request, "visualize.html", context={
-        "chart_data_json": json.dumps(chart_data),
+        "chart_data": chart_data,
         "statistics": stats,
         "dataset_summary": summary_for_charts,
         "anomaly_result": anomaly_result,

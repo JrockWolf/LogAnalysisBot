@@ -1,12 +1,27 @@
-"""Generate chart data structures for the web UI (consumed by Chart.js).
+"""Generate server-side chart images using matplotlib and scikit-learn.
 
+Produces base64-encoded PNG data URIs suitable for use in <img> tags.
 Works with any supported input format: PCAP, CSV, JSON logs, labeled datasets, etc.
 """
 
 from __future__ import annotations
 
+import base64
+import io
 import math
 from typing import Any, Dict, List
+
+import matplotlib
+matplotlib.use("Agg")  # non-interactive backend — must be set before pyplot import
+import matplotlib.pyplot as plt
+import numpy as np
+
+# ── Theme constants ───────────────────────────────────────────────
+_BG = "#1a1a2e"
+_CARD = "#16213e"
+_TEXT = "#e6e6f2"
+_GRID = "#2a2a4a"
+_ACCENT = "#8b5cf6"
 
 CHART_COLORS = [
     "#8b5cf6", "#60a5fa", "#f472b6", "#34d399", "#fbbf24",
@@ -28,94 +43,230 @@ def _safe_float(v: Any) -> float:
         return 0.0
 
 
+def _colors_for(n: int) -> List[str]:
+    return (CHART_COLORS * math.ceil(max(n, 1) / len(CHART_COLORS)))[:n]
+
+
+def _apply_dark_theme(fig: plt.Figure, ax: plt.Axes) -> None:
+    fig.patch.set_facecolor(_BG)
+    ax.set_facecolor(_CARD)
+    ax.tick_params(colors=_TEXT, labelsize=9)
+    ax.xaxis.label.set_color(_TEXT)
+    ax.yaxis.label.set_color(_TEXT)
+    ax.title.set_color(_TEXT)
+    for spine in ax.spines.values():
+        spine.set_edgecolor(_GRID)
+    ax.grid(color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+
+
+def _fig_to_uri(fig: plt.Figure) -> str:
+    """Save figure to a base64-encoded PNG data URI and close it."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=96,
+                facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    b64 = base64.b64encode(buf.read()).decode("ascii")
+    return f"data:image/png;base64,{b64}"
+
+
+# ── Chart builders ─────────────────────────────────────────────────
+
+def _hbar(labels: List[str], values: List[float], title: str, xlabel: str) -> str:
+    """Horizontal bar chart — replaces pie/doughnut for categorical distributions."""
+    n = len(labels)
+    fig_h = max(3.0, n * 0.42)
+    fig, ax = plt.subplots(figsize=(8, fig_h))
+    colors = _colors_for(n)
+    y_pos = np.arange(n)
+    bars = ax.barh(y_pos, values, color=colors, height=0.68, edgecolor="none")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
+    ax.set_xlabel(xlabel, color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.invert_yaxis()
+    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.yaxis.grid(False)
+    # Value annotations
+    x_max = max(values) if values else 1
+    for bar, val in zip(bars, values):
+        ax.text(
+            bar.get_width() + x_max * 0.01,
+            bar.get_y() + bar.get_height() / 2,
+            f"{val:,.0f}" if isinstance(val, float) and val == int(val) else f"{val:,.2f}",
+            va="center", ha="left", color=_TEXT, fontsize=8,
+        )
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _vbar(labels: List[str], values: List[float], title: str, ylabel: str) -> str:
+    """Vertical bar chart for short label sets."""
+    n = len(labels)
+    fig, ax = plt.subplots(figsize=(max(6, n * 0.55), 4.5))
+    colors = _colors_for(n)
+    x_pos = np.arange(n)
+    ax.bar(x_pos, values, color=colors, width=0.7, edgecolor="none")
+    ax.set_xticks(x_pos)
+    ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=9, color=_TEXT)
+    ax.set_ylabel(ylabel, color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.xaxis.grid(False)
+    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _histogram(values: List[float], title: str, xlabel: str, bins: int = 20) -> str:
+    """Histogram using numpy/sklearn-compatible bin computation."""
+    arr = np.array(values, dtype=float)
+    arr = arr[np.isfinite(arr)]
+    if arr.size == 0:
+        return ""
+    # Use numpy to compute bins (same approach as sklearn histogram utilities)
+    counts, edges = np.histogram(arr, bins=bins)
+    centers = (edges[:-1] + edges[1:]) / 2
+    widths = edges[1:] - edges[:-1]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar(centers, counts, width=widths * 0.9, color=_ACCENT,
+           edgecolor=_GRID, linewidth=0.5)
+    ax.set_xlabel(xlabel, color=_TEXT)
+    ax.set_ylabel("Count", color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.xaxis.grid(False)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _stacked_hbar_two(
+    val1: float, val2: float, label1: str, label2: str,
+    color1: str, color2: str, title: str,
+) -> str:
+    """Stacked horizontal bar for two-class comparison (e.g. benign vs malicious)."""
+    total = val1 + val2
+    if total <= 0:
+        return ""
+    fig, ax = plt.subplots(figsize=(8, 1.8))
+    ax.barh([0], [val1], color=color1, height=0.5, label=label1)
+    ax.barh([0], [val2], left=[val1], color=color2, height=0.5, label=label2)
+    ax.set_yticks([])
+    ax.set_xlabel("Count", color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    pct1, pct2 = 100 * val1 / total, 100 * val2 / total
+    ax.text(val1 / 2, 0, f"{label1}\n{pct1:.1f}%",
+            ha="center", va="center", color="white", fontsize=9, fontweight="bold")
+    ax.text(val1 + val2 / 2, 0, f"{label2}\n{pct2:.1f}%",
+            ha="center", va="center", color="white", fontsize=9, fontweight="bold")
+    ax.legend(labelcolor=_TEXT, facecolor=_CARD, edgecolor=_GRID,
+              loc="upper right", fontsize=9)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _feature_importance_plot(importances: Dict[str, float], title: str) -> str:
+    """sklearn-style feature importance horizontal bar chart."""
+    from sklearn.utils.validation import check_consistent_length  # noqa: F401 — validates sklearn available
+    items = sorted(importances.items(), key=lambda x: x[1])[-15:]
+    if not items:
+        return ""
+    labels = [i[0] for i in items]
+    vals = [i[1] for i in items]
+    n = len(labels)
+    fig, ax = plt.subplots(figsize=(8, max(3.0, n * 0.42)))
+    y_pos = np.arange(n)
+    # Colour by magnitude (sklearn style)
+    norm_vals = np.array(vals)
+    norm_vals = (norm_vals - norm_vals.min()) / ((norm_vals.max() - norm_vals.min()) + 1e-9)
+    colors = plt.cm.plasma(norm_vals)  # type: ignore[attr-defined]
+    ax.barh(y_pos, vals, color=colors, height=0.68, edgecolor="none")
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
+    ax.set_xlabel("Importance Score", color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.yaxis.grid(False)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
 def generate_chart_data(
     rows: List[Dict[str, Any]] | None = None,
     findings: List[str] | None = None,
     dataset_summary: Dict[str, Any] | None = None,
     anomaly_result: Dict[str, Any] | None = None,
     statistics: Dict[str, Any] | None = None,
-) -> Dict[str, Any]:
-    """Return a dict of chart descriptors keyed by chart id.
+) -> Dict[str, str]:
+    """Return a dict of chart image data URIs keyed by chart id.
 
-    Accepts data from any source type and generates appropriate charts.
+    Each value is a base64-encoded PNG data URI suitable for an <img> src.
+    Accepts data from any source type and generates appropriate matplotlib charts.
     """
-    charts: Dict[str, Any] = {}
+    charts: Dict[str, str] = {}
 
     # ── Dataset overview charts ───────────────────────────────────────
     if dataset_summary:
         # Categories / labels distribution
         cats = dataset_summary.get("categories") or dataset_summary.get("category_distribution", {})
         if cats:
-            labels = list(cats.keys())
-            charts["category_distribution"] = {
-                "type": "doughnut",
-                "title": "Category Distribution",
-                "labels": labels,
-                "data": list(cats.values()),
-                "colors": CHART_COLORS[: len(labels)],
-            }
+            items = sorted(cats.items(), key=lambda x: -x[1])
+            uri = _hbar([i[0] for i in items], [float(i[1]) for i in items],
+                        "Category Distribution", "Count")
+            if uri:
+                charts["category_distribution"] = uri
 
         benign = dataset_summary.get("benign", 0)
         malicious = dataset_summary.get("malicious", 0)
         if benign or malicious:
-            charts["benign_vs_malicious"] = {
-                "type": "pie",
-                "title": "Benign vs Malicious Traffic",
-                "labels": ["Benign", "Malicious"],
-                "data": [benign, malicious],
-                "colors": ["#34d399", "#ff6b6b"],
-            }
+            uri = _stacked_hbar_two(
+                float(benign), float(malicious),
+                "Benign", "Malicious",
+                "#34d399", "#ff6b6b",
+                "Benign vs Malicious Traffic",
+            )
+            if uri:
+                charts["benign_vs_malicious"] = uri
 
         # Protocol distribution (PCAP)
         protocols = dataset_summary.get("protocols", {})
         if protocols:
             items = sorted(protocols.items(), key=lambda x: -x[1])[:15]
-            charts["protocol_distribution"] = {
-                "type": "doughnut",
-                "title": "Protocol Distribution",
-                "labels": [p[0] for p in items],
-                "data": [p[1] for p in items],
-                "colors": CHART_COLORS[: len(items)],
-            }
+            uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
+                        "Protocol Distribution", "Packet Count")
+            if uri:
+                charts["protocol_distribution"] = uri
 
         # Top source IPs
         top_src = dataset_summary.get("top_sources", {})
         if top_src:
             items = sorted(top_src.items(), key=lambda x: -x[1])[:15]
-            charts["top_source_ips"] = {
-                "type": "bar",
-                "title": "Top Source IPs",
-                "labels": [p[0] for p in items],
-                "data": [p[1] for p in items],
-                "colors": CHART_COLORS[: len(items)],
-                "axis_label": "Packet Count",
-                "horizontal": True,
-            }
+            uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
+                        "Top Source IPs", "Packet Count")
+            if uri:
+                charts["top_source_ips"] = uri
 
         # Top destination IPs
         top_dst = dataset_summary.get("top_destinations", {})
         if top_dst:
             items = sorted(top_dst.items(), key=lambda x: -x[1])[:15]
-            charts["top_dest_ips"] = {
-                "type": "bar",
-                "title": "Top Destination IPs",
-                "labels": [p[0] for p in items],
-                "data": [p[1] for p in items],
-                "colors": CHART_COLORS[: len(items)],
-                "axis_label": "Packet Count",
-                "horizontal": True,
-            }
+            uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
+                        "Top Destination IPs", "Packet Count")
+            if uri:
+                charts["top_dest_ips"] = uri
 
         # Record types
         rtypes = dataset_summary.get("record_types", {})
         if rtypes and len(rtypes) > 1:
-            charts["record_types"] = {
-                "type": "pie",
-                "title": "Record Types",
-                "labels": list(rtypes.keys()),
-                "data": list(rtypes.values()),
-                "colors": CHART_COLORS[: len(rtypes)],
-            }
+            items = sorted(rtypes.items(), key=lambda x: -x[1])
+            uri = _hbar([i[0] for i in items], [float(i[1]) for i in items],
+                        "Record Types", "Count")
+            if uri:
+                charts["record_types"] = uri
 
     # ── Row-level labeled dataset charts ────────────────────────────────
     if rows and rows[0].get("type") == "dataset":
@@ -137,17 +288,16 @@ def generate_chart_data(
 
         top_ports = sorted(port_counts.items(), key=lambda x: -x[1])[:15]
         if top_ports:
-            charts["top_ports"] = {
-                "type": "bar",
-                "title": "Top Destination Ports",
-                "labels": [f"Port {p[0]}" for p in top_ports],
-                "data": [p[1] for p in top_ports],
-                "colors": CHART_COLORS[: len(top_ports)],
-                "axis_label": "Flow Count",
-            }
+            uri = _vbar(
+                [f"Port {p[0]}" for p in top_ports],
+                [float(p[1]) for p in top_ports],
+                "Top Destination Ports", "Flow Count",
+            )
+            if uri:
+                charts["top_ports"] = uri
 
         # Avg metrics per attack category
-        for metric_key, metric_map, title, axis in [
+        for metric_key, metric_map, title, xlabel in [
             ("avg_bytes_per_category", bytes_per_cat, "Avg Flow Bytes/s by Category", "Avg Bytes/s"),
             ("avg_packets_per_category", pkts_per_cat, "Avg Flow Packets/s by Category", "Avg Packets/s"),
             ("syn_flags_per_category", syn_per_cat, "Avg SYN Flags by Category", "Avg SYN Flags"),
@@ -158,61 +308,44 @@ def generate_chart_data(
             }
             if attack_vals:
                 s = sorted(attack_vals.items(), key=lambda x: -x[1])
-                charts[metric_key] = {
-                    "type": "bar", "title": title,
-                    "labels": [c[0] for c in s], "data": [c[1] for c in s],
-                    "colors": CHART_COLORS[: len(s)], "axis_label": axis,
-                }
+                uri = _hbar([c[0] for c in s], [c[1] for c in s], title, xlabel)
+                if uri:
+                    charts[metric_key] = uri
 
         if flow_count:
             sf = sorted(flow_count.items(), key=lambda x: -x[1])
-            charts["flows_per_category"] = {
-                "type": "bar", "title": "Flow Count by Category",
-                "labels": [c[0] for c in sf], "data": [c[1] for c in sf],
-                "colors": CHART_COLORS[: len(sf)], "axis_label": "Number of Flows",
-                "horizontal": True,
-            }
+            uri = _hbar([c[0] for c in sf], [float(c[1]) for c in sf],
+                        "Flow Count by Category", "Number of Flows")
+            if uri:
+                charts["flows_per_category"] = uri
 
     # ── Row-level PCAP charts ─────────────────────────────────────────
     if rows and rows[0].get("type") == "pcap":
         port_counts_pcap: Dict[str, int] = {}
+        pkt_sizes: List[float] = []
         for r in rows:
             dp = r.get("dst_port")
             if dp is not None:
                 port_counts_pcap[str(dp)] = port_counts_pcap.get(str(dp), 0) + 1
+            sz = r.get("length")
+            if sz is not None:
+                pkt_sizes.append(float(sz))
+
         top_ports_pcap = sorted(port_counts_pcap.items(), key=lambda x: -x[1])[:15]
         if top_ports_pcap:
-            charts["top_ports"] = {
-                "type": "bar", "title": "Top Destination Ports",
-                "labels": [f"Port {p[0]}" for p in top_ports_pcap],
-                "data": [p[1] for p in top_ports_pcap],
-                "colors": CHART_COLORS[: len(top_ports_pcap)],
-                "axis_label": "Packet Count",
-            }
+            uri = _vbar(
+                [f"Port {p[0]}" for p in top_ports_pcap],
+                [float(p[1]) for p in top_ports_pcap],
+                "Top Destination Ports", "Packet Count",
+            )
+            if uri:
+                charts["top_ports"] = uri
 
-        # Packet size distribution (histogram-like)
-        size_buckets = {"0-64": 0, "65-256": 0, "257-512": 0, "513-1024": 0, "1025-1500": 0, "1500+": 0}
-        for r in rows:
-            sz = r.get("length", 0)
-            if sz <= 64:
-                size_buckets["0-64"] += 1
-            elif sz <= 256:
-                size_buckets["65-256"] += 1
-            elif sz <= 512:
-                size_buckets["257-512"] += 1
-            elif sz <= 1024:
-                size_buckets["513-1024"] += 1
-            elif sz <= 1500:
-                size_buckets["1025-1500"] += 1
-            else:
-                size_buckets["1500+"] += 1
-        charts["packet_sizes"] = {
-            "type": "bar", "title": "Packet Size Distribution",
-            "labels": list(size_buckets.keys()),
-            "data": list(size_buckets.values()),
-            "colors": CHART_COLORS[:6],
-            "axis_label": "Packet Count",
-        }
+        # Packet size distribution — real histogram via matplotlib/numpy
+        if pkt_sizes:
+            uri = _histogram(pkt_sizes, "Packet Size Distribution", "Packet Size (bytes)", bins=20)
+            if uri:
+                charts["packet_sizes"] = uri
 
         # TCP flags distribution
         flag_counts: Dict[str, int] = {}
@@ -222,13 +355,10 @@ def generate_chart_data(
                 flag_counts[flags] = flag_counts.get(flags, 0) + 1
         if flag_counts:
             top_flags = sorted(flag_counts.items(), key=lambda x: -x[1])[:10]
-            charts["tcp_flags"] = {
-                "type": "bar", "title": "TCP Flag Distribution",
-                "labels": [f[0] for f in top_flags],
-                "data": [f[1] for f in top_flags],
-                "colors": CHART_COLORS[: len(top_flags)],
-                "axis_label": "Count",
-            }
+            uri = _hbar([f[0] for f in top_flags], [float(f[1]) for f in top_flags],
+                        "TCP Flag Distribution", "Count")
+            if uri:
+                charts["tcp_flags"] = uri
 
     # ── Anomaly detection charts ──────────────────────────────────────
     if anomaly_result:
@@ -236,46 +366,26 @@ def generate_chart_data(
         total_recs = anomaly_result.get("total_records", 0)
         normal_count = total_recs - anom_count
         if total_recs > 0:
-            charts["anomaly_split"] = {
-                "type": "pie", "title": "Normal vs Anomalous Records",
-                "labels": ["Normal", "Anomalous"],
-                "data": [normal_count, anom_count],
-                "colors": ["#34d399", "#ff6b6b"],
-            }
+            uri = _stacked_hbar_two(
+                float(normal_count), float(anom_count),
+                "Normal", "Anomalous",
+                "#34d399", "#ff6b6b",
+                "Normal vs Anomalous Records",
+            )
+            if uri:
+                charts["anomaly_split"] = uri
 
         importances = anomaly_result.get("feature_importances", {})
         if importances:
-            top_imp = list(importances.items())[:12]
-            charts["feature_importances"] = {
-                "type": "bar", "title": "Feature Importance (Anomaly Detection)",
-                "labels": [i[0] for i in top_imp],
-                "data": [i[1] for i in top_imp],
-                "colors": CHART_COLORS[: len(top_imp)],
-                "axis_label": "Importance Score",
-                "horizontal": True,
-            }
+            uri = _feature_importance_plot(importances, "Feature Importance (Anomaly Detection)")
+            if uri:
+                charts["feature_importances"] = uri
 
         scores = anomaly_result.get("anomaly_scores", [])
         if scores:
-            # Histogram of anomaly scores
-            import math
-            bins = 20
-            if scores:
-                mn = min(scores)
-                mx = max(scores)
-                rng = mx - mn if mx != mn else 1.0
-                bin_width = rng / bins
-                hist = [0] * bins
-                for s in scores:
-                    b = min(int((s - mn) / bin_width), bins - 1)
-                    hist[b] += 1
-                bin_labels = [f"{mn + i * bin_width:.2f}" for i in range(bins)]
-                charts["anomaly_score_dist"] = {
-                    "type": "bar", "title": "Anomaly Score Distribution",
-                    "labels": bin_labels, "data": hist,
-                    "colors": ["#8b5cf6"] * bins,
-                    "axis_label": "Record Count",
-                }
+            uri = _histogram(scores, "Anomaly Score Distribution", "Anomaly Score", bins=20)
+            if uri:
+                charts["anomaly_score_dist"] = uri
 
     # ── Statistics charts ─────────────────────────────────────────────
     if statistics:
@@ -284,36 +394,28 @@ def generate_chart_data(
             # Top features by standard deviation (most variable)
             by_std = sorted(
                 [(k, v.get("std", 0)) for k, v in stats.items()],
-                key=lambda x: -x[1]
+                key=lambda x: -x[1],
             )[:12]
             if by_std:
-                charts["feature_variability"] = {
-                    "type": "bar", "title": "Feature Variability (Std Dev)",
-                    "labels": [b[0] for b in by_std],
-                    "data": [b[1] for b in by_std],
-                    "colors": CHART_COLORS[: len(by_std)],
-                    "axis_label": "Standard Deviation",
-                    "horizontal": True,
-                }
+                uri = _hbar([b[0] for b in by_std], [b[1] for b in by_std],
+                            "Feature Variability (Std Dev)", "Standard Deviation")
+                if uri:
+                    charts["feature_variability"] = uri
 
             # Mean values for top features
             by_mean = sorted(
                 [(k, v.get("mean", 0)) for k, v in stats.items()],
-                key=lambda x: -abs(x[1])
+                key=lambda x: -abs(x[1]),
             )[:12]
             if by_mean:
-                charts["feature_means"] = {
-                    "type": "bar", "title": "Feature Mean Values",
-                    "labels": [b[0] for b in by_mean],
-                    "data": [b[1] for b in by_mean],
-                    "colors": CHART_COLORS[: len(by_mean)],
-                    "axis_label": "Mean",
-                    "horizontal": True,
-                }
+                uri = _hbar([b[0] for b in by_mean], [b[1] for b in by_mean],
+                            "Feature Mean Values", "Mean")
+                if uri:
+                    charts["feature_means"] = uri
 
     # ── Findings-based charts ─────────────────────────────────────────
     if findings:
-        cats: Dict[str, int] = {}
+        finding_cats: Dict[str, int] = {}
         for f in findings:
             fl = f.lower()
             if "brute force" in fl or "ssh" in fl or "ftp" in fl:
@@ -338,16 +440,14 @@ def generate_chart_data(
                 cat = "Informational"
             else:
                 cat = "Other"
-            cats[cat] = cats.get(cat, 0) + 1
+            finding_cats[cat] = finding_cats.get(cat, 0) + 1
 
-        if cats:
-            sc = sorted(cats.items(), key=lambda x: -x[1])
-            chart_type = "doughnut" if len(sc) > 1 else "bar"
-            charts["findings_by_type"] = {
-                "type": chart_type, "title": "Findings by Category",
-                "labels": [c[0] for c in sc], "data": [c[1] for c in sc],
-                "colors": CHART_COLORS[: len(sc)], "axis_label": "Count",
-            }
+        if finding_cats:
+            sc = sorted(finding_cats.items(), key=lambda x: -x[1])
+            uri = _hbar([c[0] for c in sc], [float(c[1]) for c in sc],
+                        "Findings by Category", "Count")
+            if uri:
+                charts["findings_by_type"] = uri
 
         severity: Dict[str, int] = {"Critical": 0, "Warning": 0, "Info": 0}
         for f in findings:
@@ -360,11 +460,14 @@ def generate_chart_data(
                 severity["Info"] += 1
         severity = {k: v for k, v in severity.items() if v > 0}
         if severity:
-            charts["findings_severity"] = {
-                "type": "doughnut", "title": "Findings Severity Breakdown",
-                "labels": list(severity.keys()),
-                "data": list(severity.values()),
-                "colors": ["#ff6b6b", "#fbbf24", "#60a5fa"][: len(severity)],
-            }
+            sev_items = sorted(severity.items(), key=lambda x: -x[1])
+            uri = _hbar(
+                [i[0] for i in sev_items],
+                [float(i[1]) for i in sev_items],
+                "Findings Severity Breakdown",
+                "Count",
+            )
+            if uri:
+                charts["findings_severity"] = uri
 
     return charts

@@ -5,7 +5,7 @@
   <title>Visualization — LogAnalysisBot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
 </head>
 <body>
   <div class="container">
@@ -120,10 +120,21 @@
 
     <!-- CHARTS TAB -->
     <div id="tab-charts" class="tab-content">
-      <div class="charts-section" id="chartsSection">
+      <div class="charts-section">
         <h2>Data Visualizations</h2>
-        <div class="charts-grid" id="chartsGrid"></div>
-        <p class="meta" id="noChartsMsg" style="display:none;">No chart data available.</p>
+        {% if chart_data %}
+        <div class="charts-grid">
+          {% for key, img_src in chart_data.items() %}
+          {% if img_src %}
+          <div class="chart-card">
+            <img src="{{ img_src }}" alt="{{ key }}" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="meta">No chart data available.</p>
+        {% endif %}
       </div>
     </div>
 
@@ -223,76 +234,7 @@
       document.getElementById(`tab-${tabName}`)?.classList.add('active');
     }
 
-    /* Chart rendering */
-    (function() {
-      let raw;
-      try { raw = {{ chart_data_json | safe }}; } catch(e) { return; }
-      if (!raw || typeof raw !== 'object' || !Object.keys(raw).length) {
-        const msg = document.getElementById('noChartsMsg');
-        if (msg) msg.style.display = '';
-        return;
-      }
 
-      const grid = document.getElementById('chartsGrid');
-      if (!grid) return;
-
-      const order = [
-        'protocol_distribution', 'anomaly_split',
-        'top_ports', 'top_source_ips', 'top_dest_ips',
-        'packet_sizes', 'tcp_flags',
-        'feature_importances', 'anomaly_score_dist',
-        'feature_variability', 'feature_means',
-        'benign_vs_malicious', 'category_distribution',
-        'flows_per_category', 'avg_bytes_per_category',
-      ];
-      const keys = order.filter(k => raw[k]).concat(Object.keys(raw).filter(k => !order.includes(k)));
-
-      keys.forEach(key => {
-        const spec = raw[key];
-        const wrapper = document.createElement('div');
-        wrapper.className = 'chart-card';
-        const title = document.createElement('h3');
-        title.textContent = spec.title || key;
-        wrapper.appendChild(title);
-        const canvas = document.createElement('canvas');
-        canvas.id = 'chart_' + key;
-        wrapper.appendChild(canvas);
-        grid.appendChild(wrapper);
-
-        const isPie = spec.type === 'pie' || spec.type === 'doughnut';
-        const isHorizontal = spec.horizontal === true;
-
-        new Chart(canvas, {
-          type: isPie ? spec.type : 'bar',
-          data: {
-            labels: spec.labels,
-            datasets: [{
-              data: spec.data,
-              backgroundColor: spec.colors || [],
-              borderColor: isPie ? 'rgba(0,0,0,0.3)' : spec.colors || [],
-              borderWidth: isPie ? 1 : 0,
-              borderRadius: isPie ? 0 : 4,
-            }]
-          },
-          options: {
-            responsive: true, maintainAspectRatio: true,
-            indexAxis: isHorizontal ? 'y' : 'x',
-            plugins: {
-              legend: { display: isPie, position: 'bottom', labels: { color: '#9ca3c5', font: { size: 11 }, padding: 10 } },
-              tooltip: {
-                backgroundColor: '#1a1a2e', titleColor: '#e6e6f2', bodyColor: '#e6e6f2',
-                borderColor: '#444', borderWidth: 1,
-              }
-            },
-            scales: isPie ? {} : {
-              x: { ticks: { color: '#9ca3c5', font: { size: 10 }, maxRotation: 45 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-              y: { ticks: { color: '#9ca3c5', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,0.04)' },
-                title: spec.axis_label && !isHorizontal ? { display: true, text: spec.axis_label, color: '#9ca3c5' } : undefined }
-            }
-          }
-        });
-      });
-    })();
   </script>
 </body>
 </html>
