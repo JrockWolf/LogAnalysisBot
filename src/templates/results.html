@@ -47,6 +47,12 @@
         <span class="summary-label">Records Analyzed</span>
       </div>
       {% endif %}
+      {% if model_performance and model_performance.has_labels and model_performance.binary_metrics %}
+      <div class="summary-card">
+        <span class="summary-number">{{ "%.1f"|format(model_performance.binary_metrics.accuracy * 100) }}%</span>
+        <span class="summary-label">Accuracy</span>
+      </div>
+      {% endif %}
       {% if mitre_mappings %}
       <div class="summary-card">
         <span class="summary-number">{{ mitre_mappings|selectattr('mitre_techniques')|list|length }}</span>
@@ -61,15 +67,23 @@
       {% endif %}
     </div>
 
-    <!-- Tabs for result sections -->
+    <!-- Tabs -->
     <div class="tabs">
       <button class="tab active" data-tab="findings" onclick="switchTab('findings')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         Findings
       </button>
+      <button class="tab" data-tab="performance" onclick="switchTab('performance')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Model Performance
+      </button>
       <button class="tab" data-tab="charts" onclick="switchTab('charts')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Charts
+      </button>
+      <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Deep Analysis
       </button>
       {% if anomaly_result and anomaly_result.anomaly_count is defined %}
       <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">
@@ -165,6 +179,134 @@
       {% endif %}
     </div>
 
+    <!-- MODEL PERFORMANCE TAB -->
+    <div id="tab-performance" class="tab-content">
+      {% if model_performance and model_performance.has_labels and model_performance.binary_metrics %}
+      <div class="results-section">
+        <h2>Binary Classification Metrics</h2>
+        <p class="meta">Isolation Forest anomaly detection evaluated against ground-truth labels (Malicious vs Benign).</p>
+        {% set bm = model_performance.binary_metrics %}
+        <div class="metrics-row">
+          <div class="metric-card {% if bm.accuracy >= 0.9 %}metric-good{% elif bm.accuracy >= 0.7 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(bm.accuracy * 100) }}%</span>
+            <span class="metric-label">Accuracy</span>
+          </div>
+          <div class="metric-card {% if bm.precision >= 0.8 %}metric-good{% elif bm.precision >= 0.6 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(bm.precision * 100) }}%</span>
+            <span class="metric-label">Precision</span>
+          </div>
+          <div class="metric-card {% if bm.recall >= 0.8 %}metric-good{% elif bm.recall >= 0.6 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(bm.recall * 100) }}%</span>
+            <span class="metric-label">Recall</span>
+          </div>
+          <div class="metric-card {% if bm.f1 >= 0.8 %}metric-good{% elif bm.f1 >= 0.6 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(bm.f1 * 100) }}%</span>
+            <span class="metric-label">F1 Score</span>
+          </div>
+          <div class="metric-card {% if bm.fpr <= 0.05 %}metric-good{% elif bm.fpr <= 0.15 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(bm.fpr * 100) }}%</span>
+            <span class="metric-label">False Positive Rate</span>
+          </div>
+        </div>
+
+        <div class="callout">
+          <strong>Interpretation</strong>
+          {% if bm.f1 >= 0.8 %}
+          The model achieves strong performance with an F1 score of {{ "%.2f"|format(bm.f1) }}.
+          Precision ({{ "%.1f"|format(bm.precision * 100) }}%) indicates
+          {% if bm.precision >= 0.9 %}very few false alarms{% elif bm.precision >= 0.7 %}acceptable false alarm rate{% else %}notable false alarm rate{% endif %},
+          while recall ({{ "%.1f"|format(bm.recall * 100) }}%) shows
+          {% if bm.recall >= 0.9 %}excellent detection coverage{% elif bm.recall >= 0.7 %}good detection coverage{% else %}some attacks are missed{% endif %}.
+          {% elif bm.f1 >= 0.6 %}
+          The model shows moderate performance (F1={{ "%.2f"|format(bm.f1) }}).
+          {% if bm.precision > bm.recall %}
+          It is more conservative — higher precision ({{ "%.1f"|format(bm.precision * 100) }}%) than recall ({{ "%.1f"|format(bm.recall * 100) }}%) means fewer false alarms but some attacks may be missed.
+          {% else %}
+          It is more aggressive — higher recall ({{ "%.1f"|format(bm.recall * 100) }}%) than precision ({{ "%.1f"|format(bm.precision * 100) }}%) means better detection coverage but more false alarms.
+          {% endif %}
+          {% else %}
+          Performance is limited (F1={{ "%.2f"|format(bm.f1) }}). The Isolation Forest may need parameter tuning or additional features to improve detection on this dataset.
+          {% endif %}
+        </div>
+
+        <h3>Confusion Matrix Summary</h3>
+        <div class="stats-grid">
+          <div class="stat-card metric-good"><span class="stat-value">{{ bm.tp }}</span><span class="stat-label">True Positives</span></div>
+          <div class="stat-card metric-good"><span class="stat-value">{{ bm.tn }}</span><span class="stat-label">True Negatives</span></div>
+          <div class="stat-card metric-bad"><span class="stat-value">{{ bm.fp }}</span><span class="stat-label">False Positives</span></div>
+          <div class="stat-card metric-bad"><span class="stat-value">{{ bm.fn }}</span><span class="stat-label">False Negatives</span></div>
+        </div>
+      </div>
+
+      {% if model_performance.per_class_metrics %}
+      <div class="results-section">
+        <h2>Per-Class Performance</h2>
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr>
+            {% for cls, m in model_performance.per_class_metrics.items() %}
+            <tr>
+              <td>{{ cls }}</td>
+              <td>{{ "%.4f"|format(m.precision) }}</td>
+              <td>{{ "%.4f"|format(m.recall) }}</td>
+              <td>{{ "%.4f"|format(m.f1) }}</td>
+              <td>{{ m.support }}</td>
+            </tr>
+            {% endfor %}
+          </table>
+        </div>
+      </div>
+      {% endif %}
+
+      {% if chart_data.get('confusion_matrix') or chart_data.get('per_class_metrics') %}
+      <div class="results-section">
+        <h2>Performance Visualizations</h2>
+        <div class="charts-grid">
+          {% if chart_data.get('confusion_matrix') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['confusion_matrix'] }}" alt="Confusion Matrix" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+          {% if chart_data.get('per_class_metrics') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['per_class_metrics'] }}" alt="Per-Class Metrics" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% elif model_performance and not model_performance.has_labels %}
+      <div class="results-section">
+        <h2>Anomaly Detection Summary</h2>
+        <p class="meta">No ground-truth labels available. Showing anomaly detection statistics.</p>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <span class="metric-value">{{ "%.1f"|format(model_performance.anomaly_rate * 100) }}%</span>
+            <span class="metric-label">Anomaly Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ model_performance.mean_score }}</span>
+            <span class="metric-label">Mean Score</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ model_performance.std_score }}</span>
+            <span class="metric-label">Score Std Dev</span>
+          </div>
+        </div>
+        <div class="callout">
+          <strong>Note</strong>
+          Without labeled data, precision/recall/F1 cannot be computed. Upload a labeled CSV dataset (with a Label column) to enable full model evaluation.
+        </div>
+      </div>
+      {% else %}
+      <div class="results-section">
+        <h2>Model Performance</h2>
+        <p class="meta">No anomaly detection results to evaluate. Ensure the uploaded data contains numeric features.</p>
+      </div>
+      {% endif %}
+    </div>
+
     <!-- CHARTS TAB -->
     <div id="tab-charts" class="tab-content">
       <div class="charts-section">
@@ -172,7 +314,7 @@
         {% if chart_data %}
         <div class="charts-grid">
           {% for key, img_src in chart_data.items() %}
-          {% if img_src %}
+          {% if img_src and key not in ['confusion_matrix', 'per_class_metrics', 'model_vs_baseline', 'fp_by_category', 'fn_by_category'] %}
           <div class="chart-card">
             <img src="{{ img_src }}" alt="{{ key }}" style="width:100%;border-radius:8px;display:block;" />
           </div>
@@ -183,6 +325,332 @@
         <p class="meta">No chart data available for this file.</p>
         {% endif %}
       </div>
+    </div>
+
+    <!-- DEEP ANALYSIS TAB -->
+    <div id="tab-analysis" class="tab-content">
+
+      {% if statistical_tests %}
+      <div class="results-section">
+        <h2>Statistical Significance</h2>
+        {% if statistical_tests.score_separation %}
+        {% set sep = statistical_tests.score_separation %}
+        <div class="callout {% if sep.significant is defined %}{% if sep.significant %}callout-success{% else %}callout-warning{% endif %}{% endif %}">
+          <strong>{{ sep.test }} Test</strong>
+          {% if sep.p_value is defined %}
+          p-value = {{ sep.p_value }}
+          <span class="sig-badge {% if sep.significant %}sig-yes{% else %}sig-no{% endif %}">
+            {{ "Significant (p < 0.05)" if sep.significant else "Not Significant (p >= 0.05)" }}
+          </span>
+          <br>{{ sep.interpretation }}
+          {% elif sep.note %}
+          {{ sep.note }}
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if statistical_tests.score_summary %}
+        {% set ss = statistical_tests.score_summary %}
+        <h3>Score Distribution Summary</h3>
+        <div class="metrics-row">
+          {% if ss.anomaly_mean_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.anomaly_mean_score }}</span>
+            <span class="metric-label">Anomaly Mean Score</span>
+          </div>
+          {% endif %}
+          {% if ss.normal_mean_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.normal_mean_score }}</span>
+            <span class="metric-label">Normal Mean Score</span>
+          </div>
+          {% endif %}
+          {% if ss.anomaly_std_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.anomaly_std_score }}</span>
+            <span class="metric-label">Anomaly Std Dev</span>
+          </div>
+          {% endif %}
+          {% if ss.normal_std_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.normal_std_score }}</span>
+            <span class="metric-label">Normal Std Dev</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if statistical_tests.feature_tests %}
+        <h3>Feature-Level Significance</h3>
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <tr>
+              <th>Feature</th>
+              <th>Anomaly Mean</th>
+              <th>Normal Mean</th>
+              <th>Effect Size</th>
+              <th>p-value</th>
+              <th>Significant</th>
+            </tr>
+            {% for ft in statistical_tests.feature_tests %}
+            <tr>
+              <td class="nowrap">{{ ft.feature }}</td>
+              <td>{{ "%.4g"|format(ft.anomaly_mean) }}</td>
+              <td>{{ "%.4g"|format(ft.normal_mean) }}</td>
+              <td>{{ "%.4f"|format(ft.effect_size) }}</td>
+              <td>{{ "%.6f"|format(ft.p_value) if ft.p_value is not none else "N/A" }}</td>
+              <td>
+                {% if ft.significant is not none %}
+                <span class="sig-badge {% if ft.significant %}sig-yes{% else %}sig-no{% endif %}">
+                  {{ "Yes" if ft.significant else "No" }}
+                </span>
+                {% else %}—{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </table>
+        </div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      {% if baseline_comparison %}
+      <div class="results-section">
+        <h2>Comparison with Baselines</h2>
+        <p class="meta">Isolation Forest vs Z-Score threshold baseline.</p>
+
+        <div class="comparison-row">
+          <div class="comparison-card">
+            <h3>Isolation Forest</h3>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-value">{{ baseline_comparison.isolation_forest.anomaly_count }}</span>
+                <span class="stat-label">Anomalies</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(baseline_comparison.isolation_forest.anomaly_rate * 100) }}%</span>
+                <span class="stat-label">Anomaly Rate</span>
+              </div>
+              {% if baseline_comparison.isolation_forest.metrics %}
+              {% set ifm = baseline_comparison.isolation_forest.metrics %}
+              <div class="stat-card metric-good">
+                <span class="stat-value">{{ "%.1f"|format(ifm.f1 * 100) }}%</span>
+                <span class="stat-label">F1 Score</span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          <div class="comparison-card">
+            <h3>Z-Score Baseline</h3>
+            <div class="stats-grid">
+              <div class="stat-card">
+                <span class="stat-value">{{ baseline_comparison.zscore_baseline.anomaly_count }}</span>
+                <span class="stat-label">Anomalies</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(baseline_comparison.zscore_baseline.anomaly_rate * 100) }}%</span>
+                <span class="stat-label">Anomaly Rate</span>
+              </div>
+              {% if baseline_comparison.zscore_baseline.metrics %}
+              {% set zsm = baseline_comparison.zscore_baseline.metrics %}
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(zsm.f1 * 100) }}%</span>
+                <span class="stat-label">F1 Score</span>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        {% if baseline_comparison.agreement %}
+        {% set ag = baseline_comparison.agreement %}
+        <h3>Model Agreement</h3>
+        <div class="metrics-row">
+          <div class="metric-card">
+            <span class="metric-value">{{ "%.1f"|format(ag.agreement_rate * 100) }}%</span>
+            <span class="metric-label">Agreement Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.both_flagged }}</span>
+            <span class="metric-label">Both Flagged</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.only_isolation_forest }}</span>
+            <span class="metric-label">Only IF</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.only_zscore }}</span>
+            <span class="metric-label">Only Z-Score</span>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if chart_data.get('model_vs_baseline') %}
+        <div class="charts-grid" style="margin-top:16px">
+          <div class="chart-card">
+            <img src="{{ chart_data['model_vs_baseline'] }}" alt="Model vs Baseline" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="callout">
+          <strong>Interpretation</strong>
+          {% if baseline_comparison.isolation_forest.metrics and baseline_comparison.zscore_baseline.metrics %}
+          {% set if_f1 = baseline_comparison.isolation_forest.metrics.f1 %}
+          {% set zs_f1 = baseline_comparison.zscore_baseline.metrics.f1 %}
+          {% if if_f1 > zs_f1 %}
+          Isolation Forest outperforms the z-score baseline (F1: {{ "%.2f"|format(if_f1) }} vs {{ "%.2f"|format(zs_f1) }}), confirming the value of the ensemble tree-based approach for this dataset.
+          {% elif if_f1 == zs_f1 %}
+          Both methods achieve identical F1 scores ({{ "%.2f"|format(if_f1) }}), suggesting the anomaly patterns are straightforward.
+          {% else %}
+          The z-score baseline outperforms Isolation Forest (F1: {{ "%.2f"|format(zs_f1) }} vs {{ "%.2f"|format(if_f1) }}). This dataset may have simpler anomaly patterns.
+          {% endif %}
+          {% else %}
+          Isolation Forest detected {{ baseline_comparison.isolation_forest.anomaly_count }} anomalies while the z-score baseline found {{ baseline_comparison.zscore_baseline.anomaly_count }}. {{ "%.1f"|format(baseline_comparison.agreement.agreement_rate * 100) }}% overall agreement.
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if hypotheses %}
+      <div class="results-section">
+        <h2>Addressing Hypotheses</h2>
+        <p class="meta">Data-driven hypotheses evaluated against the analysis results.</p>
+        <div class="hypothesis-grid">
+          {% for h in hypotheses %}
+          <div class="hypothesis-card">
+            <div class="hypothesis-id">{{ h.id }}</div>
+            <div class="hypothesis-statement">{{ h.hypothesis }}</div>
+            <span class="hypothesis-result {% if h.result == 'SUPPORTED' %}supported{% elif 'PARTIAL' in h.result %}partial{% else %}not-supported{% endif %}">
+              {{ h.result }}
+            </span>
+            <div class="hypothesis-evidence">{{ h.evidence }}</div>
+            <div class="hypothesis-detail">{{ h.detail }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if anomaly_result and anomaly_result.feature_importances %}
+      <div class="results-section">
+        <h2>Feature Importance Analysis</h2>
+        <p class="meta">Features ranked by their contribution to anomaly detection (mean absolute deviation between anomalous and normal groups, normalized by standard deviation).</p>
+        {% if chart_data.get('feature_importances') %}
+        <div class="charts-grid">
+          <div class="chart-card">
+            <img src="{{ chart_data['feature_importances'] }}" alt="Feature Importance" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+        </div>
+        {% endif %}
+        <div class="stats-table-wrapper" style="margin-top:16px">
+          <table class="data-table">
+            <tr><th>Rank</th><th>Feature</th><th>Importance</th></tr>
+            {% for fname, score in anomaly_result.feature_importances.items() %}
+            {% if loop.index <= 20 %}
+            <tr><td>{{ loop.index }}</td><td>{{ fname }}</td><td>{{ score }}</td></tr>
+            {% endif %}
+            {% endfor %}
+          </table>
+        </div>
+        <div class="callout">
+          <strong>Interpretation</strong>
+          {% set top_features = anomaly_result.feature_importances.keys()|list %}
+          The most influential feature is <strong style="display:inline;font-size:inherit;">{{ top_features[0] if top_features else 'N/A' }}</strong>.
+          Features with higher importance scores show greater statistical divergence between normal and anomalous records.
+        </div>
+      </div>
+      {% endif %}
+
+      {% if error_analysis and error_analysis.has_labels %}
+      <div class="results-section">
+        <h2>Error Analysis</h2>
+        <div class="metrics-row">
+          <div class="metric-card metric-bad">
+            <span class="metric-value">{{ error_analysis.total_errors }}</span>
+            <span class="metric-label">Total Errors</span>
+          </div>
+          <div class="metric-card {% if error_analysis.error_rate <= 0.1 %}metric-good{% elif error_analysis.error_rate <= 0.25 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(error_analysis.error_rate * 100) }}%</span>
+            <span class="metric-label">Error Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ error_analysis.false_positives.count }}</span>
+            <span class="metric-label">False Positives</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ error_analysis.false_negatives.count }}</span>
+            <span class="metric-label">False Negatives</span>
+          </div>
+        </div>
+
+        {% if error_analysis.interpretation %}
+        <div class="callout {% if error_analysis.error_rate <= 0.1 %}callout-success{% elif error_analysis.error_rate <= 0.25 %}callout-warning{% else %}callout-danger{% endif %}">
+          <strong>Error Pattern Analysis</strong>
+          {{ error_analysis.interpretation }}
+        </div>
+        {% endif %}
+
+        {% if error_analysis.false_positives.by_category or error_analysis.false_negatives.by_category %}
+        <div class="comparison-row">
+          {% if error_analysis.false_positives.by_category %}
+          <div class="comparison-card">
+            <h3>False Positives by Category</h3>
+            <p class="meta">Benign traffic incorrectly flagged (FP rate: {{ "%.1f"|format(error_analysis.false_positives.rate * 100) }}%).</p>
+            <table class="data-table">
+              <tr><th>Category</th><th>Count</th></tr>
+              {% for cat, count in error_analysis.false_positives.by_category.items() %}
+              <tr><td>{{ cat }}</td><td>{{ count }}</td></tr>
+              {% endfor %}
+            </table>
+          </div>
+          {% endif %}
+          {% if error_analysis.false_negatives.by_category %}
+          <div class="comparison-card">
+            <h3>False Negatives by Category</h3>
+            <p class="meta">Malicious traffic missed (FN rate: {{ "%.1f"|format(error_analysis.false_negatives.rate * 100) }}%).</p>
+            <table class="data-table">
+              <tr><th>Category</th><th>Count</th></tr>
+              {% for cat, count in error_analysis.false_negatives.by_category.items() %}
+              <tr><td>{{ cat }}</td><td>{{ count }}</td></tr>
+              {% endfor %}
+            </table>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        {% if chart_data.get('fp_by_category') or chart_data.get('fn_by_category') %}
+        <div class="charts-grid" style="margin-top:16px">
+          {% if chart_data.get('fp_by_category') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['fp_by_category'] }}" alt="False Positives" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+          {% if chart_data.get('fn_by_category') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['fn_by_category'] }}" alt="False Negatives" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      {% elif error_analysis and not error_analysis.has_labels %}
+      <div class="results-section">
+        <h2>Error Analysis</h2>
+        <div class="callout">
+          <strong>Note</strong>
+          Error analysis requires labeled data with ground-truth labels to identify false positives and false negatives.
+        </div>
+      </div>
+      {% endif %}
+
+      {% if not statistical_tests and not baseline_comparison and not hypotheses and not error_analysis %}
+      <div class="results-section">
+        <h2>Deep Analysis</h2>
+        <p class="meta">Not enough data for deep analysis. Ensure the uploaded data contains numeric features.</p>
+      </div>
+      {% endif %}
     </div>
 
     <!-- ANOMALIES TAB -->

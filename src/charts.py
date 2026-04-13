@@ -195,12 +195,99 @@ def _feature_importance_plot(importances: Dict[str, float], title: str) -> str:
     return _fig_to_uri(fig)
 
 
+def _confusion_matrix_heatmap(labels: List[str], matrix: List[List[int]], title: str) -> str:
+    """Render a confusion matrix as a heatmap."""
+    n = len(labels)
+    if n == 0:
+        return ""
+    arr = np.array(matrix, dtype=float)
+    fig, ax = plt.subplots(figsize=(max(5, n * 0.8 + 2), max(4, n * 0.7 + 1.5)))
+    cmap = plt.cm.Purples  # type: ignore[attr-defined]
+    im = ax.imshow(arr, cmap=cmap, aspect="auto")
+    ax.set_xticks(np.arange(n))
+    ax.set_yticks(np.arange(n))
+    short_labels = [l[:16] for l in labels]
+    ax.set_xticklabels(short_labels, rotation=45, ha="right", fontsize=8, color=_TEXT)
+    ax.set_yticklabels(short_labels, fontsize=8, color=_TEXT)
+    ax.set_xlabel("Predicted", color=_TEXT, fontsize=10)
+    ax.set_ylabel("Actual", color=_TEXT, fontsize=10)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    # Cell annotations
+    thresh = arr.max() / 2.0
+    for i in range(n):
+        for j in range(n):
+            val = int(arr[i, j])
+            ax.text(j, i, str(val), ha="center", va="center",
+                    color="white" if arr[i, j] > thresh else _TEXT, fontsize=9)
+    fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _grouped_bar(groups: List[str], series: Dict[str, List[float]], title: str, ylabel: str) -> str:
+    """Grouped bar chart for comparing multiple series across groups."""
+    n_groups = len(groups)
+    n_series = len(series)
+    if n_groups == 0 or n_series == 0:
+        return ""
+    fig, ax = plt.subplots(figsize=(max(6, n_groups * 1.2), 4.5))
+    x = np.arange(n_groups)
+    width = 0.7 / n_series
+    colors = _colors_for(n_series)
+    for i, (name, vals) in enumerate(series.items()):
+        offset = (i - n_series / 2 + 0.5) * width
+        bars = ax.bar(x + offset, vals[:n_groups], width, label=name, color=colors[i], edgecolor="none")
+        for bar, val in zip(bars, vals[:n_groups]):
+            ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
+                    f"{val:.2f}", ha="center", va="bottom", color=_TEXT, fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels(groups, fontsize=9, color=_TEXT)
+    ax.set_ylabel(ylabel, color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.legend(labelcolor=_TEXT, facecolor=_CARD, edgecolor=_GRID, fontsize=9)
+    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.xaxis.grid(False)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
+def _error_bar_chart(categories: Dict[str, int], title: str, xlabel: str, color: str = "#ff6b6b") -> str:
+    """Horizontal bar chart for error categories (FP/FN breakdown)."""
+    if not categories:
+        return ""
+    items = sorted(categories.items(), key=lambda x: -x[1])[:15]
+    labels = [i[0] for i in items]
+    values = [float(i[1]) for i in items]
+    n = len(labels)
+    fig, ax = plt.subplots(figsize=(8, max(2.5, n * 0.42)))
+    y_pos = np.arange(n)
+    ax.barh(y_pos, values, color=color, height=0.68, edgecolor="none", alpha=0.85)
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
+    ax.set_xlabel(xlabel, color=_TEXT)
+    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.invert_yaxis()
+    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.yaxis.grid(False)
+    for bar, val in zip(ax.patches, values):
+        ax.text(bar.get_width() + max(values) * 0.01, bar.get_y() + bar.get_height() / 2,
+                f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
+    _apply_dark_theme(fig, ax)
+    fig.tight_layout()
+    return _fig_to_uri(fig)
+
+
 def generate_chart_data(
     rows: List[Dict[str, Any]] | None = None,
     findings: List[str] | None = None,
     dataset_summary: Dict[str, Any] | None = None,
     anomaly_result: Dict[str, Any] | None = None,
     statistics: Dict[str, Any] | None = None,
+    model_performance: Dict[str, Any] | None = None,
+    baseline_comparison: Dict[str, Any] | None = None,
+    error_analysis: Dict[str, Any] | None = None,
 ) -> Dict[str, str]:
     """Return a dict of chart image data URIs keyed by chart id.
 
@@ -469,5 +556,72 @@ def generate_chart_data(
             )
             if uri:
                 charts["findings_severity"] = uri
+
+    # ── Model performance charts ──────────────────────────────────────
+    if model_performance:
+        # Confusion matrix heatmap
+        cm = model_performance.get("confusion_matrix", {})
+        if cm.get("labels") and cm.get("matrix"):
+            uri = _confusion_matrix_heatmap(cm["labels"], cm["matrix"],
+                                            "Confusion Matrix")
+            if uri:
+                charts["confusion_matrix"] = uri
+
+        # Per-class metrics bar chart
+        pcm = model_performance.get("per_class_metrics", {})
+        if pcm:
+            classes = list(pcm.keys())[:12]
+            f1_vals = [pcm[c].get("f1", 0) for c in classes]
+            prec_vals = [pcm[c].get("precision", 0) for c in classes]
+            rec_vals = [pcm[c].get("recall", 0) for c in classes]
+            uri = _grouped_bar(
+                classes,
+                {"Precision": prec_vals, "Recall": rec_vals, "F1": f1_vals},
+                "Per-Class Performance Metrics",
+                "Score",
+            )
+            if uri:
+                charts["per_class_metrics"] = uri
+
+    # ── Baseline comparison charts ────────────────────────────────────
+    if baseline_comparison:
+        iforest = baseline_comparison.get("isolation_forest", {})
+        zscore = baseline_comparison.get("zscore_baseline", {})
+
+        if_metrics = iforest.get("metrics", {})
+        zs_metrics = zscore.get("metrics", {})
+        if if_metrics and zs_metrics:
+            metric_names = ["Precision", "Recall", "F1", "Accuracy"]
+            if_vals = [if_metrics.get(m.lower(), 0) for m in metric_names]
+            zs_vals = [zs_metrics.get(m.lower(), 0) for m in metric_names]
+            uri = _grouped_bar(
+                metric_names,
+                {"Isolation Forest": if_vals, "Z-Score Baseline": zs_vals},
+                "Model vs Baseline Performance",
+                "Score",
+            )
+            if uri:
+                charts["model_vs_baseline"] = uri
+        else:
+            # Just compare anomaly counts
+            labels = ["Isolation Forest", "Z-Score Baseline"]
+            counts = [float(iforest.get("anomaly_count", 0)), float(zscore.get("anomaly_count", 0))]
+            if any(c > 0 for c in counts):
+                uri = _vbar(labels, counts, "Anomalies Detected: Model vs Baseline", "Count")
+                if uri:
+                    charts["model_vs_baseline"] = uri
+
+    # ── Error analysis charts ─────────────────────────────────────────
+    if error_analysis and error_analysis.get("has_labels"):
+        fp_cats = error_analysis.get("false_positives", {}).get("by_category", {})
+        fn_cats = error_analysis.get("false_negatives", {}).get("by_category", {})
+        if fp_cats:
+            uri = _error_bar_chart(fp_cats, "False Positives by Category", "Count", "#fbbf24")
+            if uri:
+                charts["fp_by_category"] = uri
+        if fn_cats:
+            uri = _error_bar_chart(fn_cats, "False Negatives by Category", "Count", "#ff6b6b")
+            if uri:
+                charts["fn_by_category"] = uri
 
     return charts

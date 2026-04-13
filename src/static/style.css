@@ -549,4 +549,195 @@ ul { padding-left: 20px; }
   .summary-cards { grid-template-columns: repeat(2, 1fr); }
   .charts-grid { grid-template-columns: 1fr; }
   .hero h1 { font-size: 28px; }
+  .metrics-row { grid-template-columns: 1fr; }
+  .hypothesis-grid { grid-template-columns: 1fr; }
+}
+
+/* ── Metrics Cards (Model Performance) ─────────────────── */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.metric-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px 14px;
+  text-align: center;
+}
+
+.metric-card.metric-good { border-color: rgba(52, 211, 153, 0.3); }
+.metric-card.metric-warn { border-color: rgba(251, 191, 36, 0.3); }
+.metric-card.metric-bad { border-color: rgba(255, 107, 107, 0.3); }
+
+.metric-value {
+  display: block;
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--accent);
+}
+
+.metric-card.metric-good .metric-value { color: var(--success); }
+.metric-card.metric-warn .metric-value { color: var(--warning); }
+.metric-card.metric-bad .metric-value { color: var(--danger); }
+
+.metric-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ── Interpretation Callout ────────────────────────────── */
+.callout {
+  background: rgba(139, 92, 246, 0.06);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 14px 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #d4d4e8;
+}
+
+.callout-success {
+  background: rgba(52, 211, 153, 0.06);
+  border-color: rgba(52, 211, 153, 0.15);
+  border-left-color: var(--success);
+}
+
+.callout-warning {
+  background: rgba(251, 191, 36, 0.06);
+  border-color: rgba(251, 191, 36, 0.15);
+  border-left-color: var(--warning);
+}
+
+.callout-danger {
+  background: rgba(255, 107, 107, 0.06);
+  border-color: rgba(255, 107, 107, 0.15);
+  border-left-color: var(--danger);
+}
+
+.callout strong {
+  color: var(--accent);
+  display: block;
+  margin-bottom: 4px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* ── Hypothesis Cards ──────────────────────────────────── */
+.hypothesis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.hypothesis-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.hypothesis-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.hypothesis-statement {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e6e6f2;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+.hypothesis-result {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  margin-bottom: 8px;
+}
+
+.hypothesis-result.supported {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--success);
+}
+
+.hypothesis-result.partial {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+}
+
+.hypothesis-result.not-supported {
+  background: rgba(255, 107, 107, 0.15);
+  color: var(--danger);
+}
+
+.hypothesis-evidence {
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.hypothesis-detail {
+  font-size: 13px;
+  color: #b8b8d0;
+  line-height: 1.5;
+}
+
+/* ── Significance Indicator ────────────────────────────── */
+.sig-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.sig-badge.sig-yes {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--success);
+}
+
+.sig-badge.sig-no {
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--warning);
+}
+
+/* ── Comparison Table ──────────────────────────────────── */
+.comparison-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+
+.comparison-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.comparison-card h3 {
+  color: var(--accent);
+  margin: 0 0 12px;
+  font-size: 15px;
 }

@@ -7,7 +7,9 @@ from .analyzer import analyze_logs_with_llm, heuristic_detect
 from .parsers import parse_log, is_labeled_dataset_csv, detect_file_type
 from .mitre_mapping import enrich_findings_with_mitre
 from .charts import generate_chart_data
-from .pipeline import run_isolation_forest, compute_statistics, dataset_overview
+from .pipeline import run_isolation_forest, compute_statistics, dataset_overview, \
+    compute_model_performance, compute_baseline_comparison, compute_statistical_tests, \
+    compute_error_analysis, compute_hypotheses
 import tempfile
 import logging
 import os
@@ -285,12 +287,23 @@ async def analyze(
     # Merge overviews
     summary_for_charts = dataset_summary_data or ds_overview
 
+    # Analytics
+    effective_rows = ds_rows or records
+    model_perf = compute_model_performance(effective_rows, anomaly_result)
+    baseline_comp = compute_baseline_comparison(effective_rows, anomaly_result)
+    stat_tests = compute_statistical_tests(effective_rows, anomaly_result)
+    error_ana = compute_error_analysis(effective_rows, anomaly_result)
+    hypotheses = compute_hypotheses(effective_rows, anomaly_result, summary_for_charts)
+
     # Charts
     chart_data = generate_chart_data(
-        rows=ds_rows or records,
+        rows=effective_rows,
         findings=findings,
         dataset_summary=summary_for_charts,
         anomaly_result=anomaly_result,
+        model_performance=model_perf,
+        baseline_comparison=baseline_comp,
+        error_analysis=error_ana,
     )
 
     return templates.TemplateResponse(request, "results.html", context={
@@ -312,6 +325,11 @@ async def analyze(
         "anomaly_result": anomaly_result,
         "file_type": file_type,
         "filename": upload.filename if upload and upload.filename else "pasted_text",
+        "model_performance": model_perf,
+        "baseline_comparison": baseline_comp,
+        "statistical_tests": stat_tests,
+        "error_analysis": error_ana,
+        "hypotheses": hypotheses,
     })
 
 
@@ -382,12 +400,24 @@ async def visualize(
 
     summary_for_charts = dataset_summary_data or ds_overview
 
+    effective_rows = ds_rows or records
+
+    # Analytics
+    model_perf = compute_model_performance(effective_rows, anomaly_result)
+    baseline_comp = compute_baseline_comparison(effective_rows, anomaly_result)
+    stat_tests = compute_statistical_tests(effective_rows, anomaly_result)
+    error_ana = compute_error_analysis(effective_rows, anomaly_result)
+    hypotheses = compute_hypotheses(effective_rows, anomaly_result, summary_for_charts)
+
     chart_data = generate_chart_data(
-        rows=ds_rows or records,
+        rows=effective_rows,
         findings=None,
         dataset_summary=summary_for_charts,
         anomaly_result=anomaly_result,
         statistics=stats,
+        model_performance=model_perf,
+        baseline_comparison=baseline_comp,
+        error_analysis=error_ana,
     )
 
     return templates.TemplateResponse(request, "visualize.html", context={
@@ -399,4 +429,9 @@ async def visualize(
         "file_type": file_type,
         "filename": upload.filename if upload and upload.filename else "pasted_data",
         "total_records": len(records),
+        "model_performance": model_perf,
+        "baseline_comparison": baseline_comp,
+        "statistical_tests": stat_tests,
+        "error_analysis": error_ana,
+        "hypotheses": hypotheses,
     })
