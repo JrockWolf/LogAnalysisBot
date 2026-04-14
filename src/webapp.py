@@ -233,6 +233,18 @@ async def analyze(
     except Exception:
         pass
 
+    # Set provider-specific env var from form key so LLMAdapter picks it up immediately
+    if provided_key:
+        key_env_map = {
+            "gemini": "GEMINI_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "perplexity": "PERPLEXITY_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+        }
+        env_name = key_env_map.get(selected_provider)
+        if env_name:
+            os.environ[env_name] = provided_key
+
     # Run analysis
     try:
         analysis = analyze_logs_with_llm(
@@ -257,19 +269,6 @@ async def analyze(
     # Parse records for pipeline
     records = parse_log(path)
 
-    # Run anomaly detection pipeline
-    anomaly_result = None
-    try:
-        anomaly_result = run_isolation_forest(records)
-        if anomaly_result and anomaly_result.get("anomaly_count", 0) > 0:
-            findings.append(
-                f"Anomaly Detection: {anomaly_result['anomaly_count']} of "
-                f"{anomaly_result['total_records']} records flagged as anomalous "
-                f"by Isolation Forest"
-            )
-    except Exception as e:
-        logger.warning("Anomaly detection skipped: %s", e)
-
     # Dataset overview
     ds_overview = dataset_overview(records)
 
@@ -287,24 +286,22 @@ async def analyze(
     # Merge overviews
     summary_for_charts = dataset_summary_data or ds_overview
 
-    # Analytics
+    # Use consistent row set for all pipeline functions
     effective_rows = ds_rows or records
-    model_perf = compute_model_performance(effective_rows, anomaly_result)
-    baseline_comp = compute_baseline_comparison(effective_rows, anomaly_result)
-    stat_tests = compute_statistical_tests(effective_rows, anomaly_result)
-    error_ana = compute_error_analysis(effective_rows, anomaly_result)
-    hypotheses = compute_hypotheses(effective_rows, anomaly_result, summary_for_charts)
 
-    # Charts
-    chart_data = generate_chart_data(
-        rows=effective_rows,
-        findings=findings,
-        dataset_summary=summary_for_charts,
-        anomaly_result=anomaly_result,
-        model_performance=model_perf,
-        baseline_comparison=baseline_comp,
-        error_analysis=error_ana,
-    )
+    # Run anomaly detection pipeline on effective_rows so indices stay consistent
+    anomaly_result = None
+    try:
+        anomaly_result = run_isolation_forest(effective_rows)
+        if anomaly_result and anomaly_result.get("anomaly_count", 0) > 0:
+            anom_pct = anomaly_result['anomaly_count'] / max(anomaly_result['total_records'], 1) * 100
+            findings.append(
+                f"Anomaly Detection: {anomaly_result['anomaly_count']} of "
+                f"{anomaly_result['total_records']} records ({anom_pct:.1f}%) flagged as anomalous "
+                f"by Isolation Forest"
+            )
+    except Exception as e:
+        logger.warning("Anomaly detection skipped: %s", e)
 
     return templates.TemplateResponse(request, "results.html", context={
         "findings": findings,
@@ -321,15 +318,9 @@ async def analyze(
         "analysis": analysis,
         "mitre_mappings": mitre_mappings,
         "dataset_summary": summary_for_charts,
-        "chart_data": chart_data,
         "anomaly_result": anomaly_result,
         "file_type": file_type,
         "filename": upload.filename if upload and upload.filename else "pasted_text",
-        "model_performance": model_perf,
-        "baseline_comparison": baseline_comp,
-        "statistical_tests": stat_tests,
-        "error_analysis": error_ana,
-        "hypotheses": hypotheses,
     })
 
 
@@ -374,16 +365,6 @@ async def visualize(
     file_type = detect_file_type(path)
     records = parse_log(path)
 
-    # Compute statistics
-    stats = compute_statistics(records)
-
-    # Run anomaly detection
-    anomaly_result = None
-    try:
-        anomaly_result = run_isolation_forest(records)
-    except Exception as e:
-        logger.warning("Anomaly detection skipped: %s", e)
-
     # Dataset overview
     ds_overview = dataset_overview(records)
 
@@ -400,7 +381,18 @@ async def visualize(
 
     summary_for_charts = dataset_summary_data or ds_overview
 
+    # Use consistent row set for all pipeline functions
     effective_rows = ds_rows or records
+
+    # Compute statistics
+    stats = compute_statistics(effective_rows)
+
+    # Run anomaly detection on effective_rows so indices stay consistent
+    anomaly_result = None
+    try:
+        anomaly_result = run_isolation_forest(effective_rows)
+    except Exception as e:
+        logger.warning("Anomaly detection skipped: %s", e)
 
     # Analytics
     model_perf = compute_model_performance(effective_rows, anomaly_result)

@@ -367,6 +367,12 @@ class LLMAdapter:
             except Exception as e:
                 logger.exception("Gemini SDK call failed: %s", e)
                 # fall through to HTTP fallback if possible
+                if "requests" not in info:
+                    try:
+                        import requests as _req
+                        info["requests"] = _req
+                    except ImportError:
+                        raise RuntimeError("Gemini SDK failed and requests package not available for HTTP fallback") from e
                 mode = "http"
 
         if mode != "http":

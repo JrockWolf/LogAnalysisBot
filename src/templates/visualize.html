@@ -5,7 +5,6 @@
   <title>Visualization — LogAnalysisBot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <link rel="stylesheet" href="/static/style.css">
-
 </head>
 <body>
   <div class="container">
@@ -37,7 +36,7 @@
       </div>
       {% if anomaly_result and anomaly_result.anomaly_count is defined %}
       <div class="summary-card {% if anomaly_result.anomaly_count > 0 %}summary-danger{% endif %}">
-        <span class="summary-number">{{ anomaly_result.anomaly_count }}</span>
+        <span class="summary-number">{{ anomaly_result.anomaly_count }} <small style="font-size:.55em;opacity:.7">({{ "%.1f"|format(anomaly_result.anomaly_count / (anomaly_result.total_records or 1) * 100) }}%)</small></span>
         <span class="summary-label">Anomalies Detected</span>
       </div>
       {% endif %}
@@ -60,38 +59,38 @@
     </div>
 
     <!-- Tabs -->
-    <div class="tabs">
-      <button class="tab active" data-tab="overview" onclick="switchTab('overview')">
+    <div class="tabs" id="mainTabs">
+      <button type="button" class="tab active" data-tab="overview">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
         Overview
       </button>
-      <button class="tab" data-tab="performance" onclick="switchTab('performance')">
+      <button type="button" class="tab" data-tab="performance">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
         Model Performance
       </button>
-      <button class="tab" data-tab="charts" onclick="switchTab('charts')">
+      <button type="button" class="tab" data-tab="charts">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Charts
       </button>
-      <button class="tab" data-tab="analysis" onclick="switchTab('analysis')">
+      <button type="button" class="tab" data-tab="analysis">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Deep Analysis
       </button>
       {% if statistics and statistics.stats %}
-      <button class="tab" data-tab="stats" onclick="switchTab('stats')">
+      <button type="button" class="tab" data-tab="stats">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Statistics
       </button>
       {% endif %}
       {% if anomaly_result and anomaly_result.anomaly_count is defined %}
-      <button class="tab" data-tab="anomalies" onclick="switchTab('anomalies')">
+      <button type="button" class="tab" data-tab="anomalies">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
         Anomalies
       </button>
       {% endif %}
     </div>
 
-    <!-- OVERVIEW TAB -->
+    <!-- ═══════════════════════════════════════════ OVERVIEW TAB ═══════════════════════════════════════════ -->
     <div id="tab-overview" class="tab-content active">
       {% if dataset_summary %}
       <div class="results-section">
@@ -133,20 +132,23 @@
 
         {% if dataset_summary.protocols %}
         <h3>Protocol Distribution</h3>
+        {% set proto_total = dataset_summary.protocols.values()|sum or 1 %}
         <table class="data-table">
-          <tr><th>Protocol</th><th>Count</th></tr>
+          <tr><th>Protocol</th><th>Count</th><th>%</th></tr>
           {% for proto, count in dataset_summary.protocols.items() %}
-          <tr><td>{{ proto }}</td><td>{{ count }}</td></tr>
+          <tr><td>{{ proto }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / proto_total * 100) }}%</td></tr>
           {% endfor %}
         </table>
         {% endif %}
 
         {% if dataset_summary.categories or dataset_summary.category_distribution %}
         <h3>Category Distribution</h3>
+        {% set cat_dict = dataset_summary.categories or dataset_summary.category_distribution %}
+        {% set cat_total = cat_dict.values()|sum or 1 %}
         <table class="data-table">
-          <tr><th>Category</th><th>Count</th></tr>
-          {% for cat, count in (dataset_summary.categories or dataset_summary.category_distribution).items() %}
-          <tr><td>{{ cat }}</td><td>{{ count }}</td></tr>
+          <tr><th>Category</th><th>Count</th><th>%</th></tr>
+          {% for cat, count in cat_dict.items() %}
+          <tr><td>{{ cat }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / cat_total * 100) }}%</td></tr>
           {% endfor %}
         </table>
         {% endif %}
@@ -159,12 +161,12 @@
       {% endif %}
     </div>
 
-    <!-- MODEL PERFORMANCE TAB -->
+    <!-- ═══════════════════════════════════════ MODEL PERFORMANCE TAB ═══════════════════════════════════════ -->
     <div id="tab-performance" class="tab-content">
       {% if model_performance and model_performance.has_labels and model_performance.binary_metrics %}
       <div class="results-section">
         <h2>Binary Classification Metrics</h2>
-        <p class="meta">Isolation Forest anomaly detection evaluated against ground-truth labels.</p>
+        <p class="meta">Isolation Forest anomaly detection evaluated against ground-truth labels (Malicious vs Benign).</p>
         {% set bm = model_performance.binary_metrics %}
         <div class="metrics-row">
           <div class="metric-card {% if bm.accuracy >= 0.9 %}metric-good{% elif bm.accuracy >= 0.7 %}metric-warn{% else %}metric-bad{% endif %}">
@@ -192,12 +194,17 @@
         <div class="callout">
           <strong>Interpretation</strong>
           {% if bm.f1 >= 0.8 %}
-          The model achieves strong performance with an F1 of {{ "%.2f"|format(bm.f1) }}.
+          The model achieves strong performance with an F1 score of {{ "%.2f"|format(bm.f1) }}.
+          Precision ({{ "%.1f"|format(bm.precision * 100) }}%) indicates
+          {% if bm.precision >= 0.9 %}very few false alarms{% elif bm.precision >= 0.7 %}acceptable false alarm rate{% else %}notable false alarm rate{% endif %},
+          while recall ({{ "%.1f"|format(bm.recall * 100) }}%) shows
+          {% if bm.recall >= 0.9 %}excellent detection coverage{% elif bm.recall >= 0.7 %}good detection coverage{% else %}some attacks are missed{% endif %}.
           {% elif bm.f1 >= 0.6 %}
           The model shows moderate performance (F1={{ "%.2f"|format(bm.f1) }}).
-          {% if bm.precision > bm.recall %}Higher precision than recall — fewer alarms but some attacks missed.{% else %}Higher recall than precision — better coverage but more false alarms.{% endif %}
+          {% if bm.precision > bm.recall %}Higher precision than recall — fewer false alarms but some attacks may be missed.
+          {% else %}Higher recall than precision — better detection coverage but more false alarms.{% endif %}
           {% else %}
-          Performance is limited (F1={{ "%.2f"|format(bm.f1) }}). The model may need parameter tuning.
+          Performance is limited (F1={{ "%.2f"|format(bm.f1) }}). The Isolation Forest may need parameter tuning or additional features.
           {% endif %}
         </div>
 
@@ -219,9 +226,9 @@
             {% for cls, m in model_performance.per_class_metrics.items() %}
             <tr>
               <td>{{ cls }}</td>
-              <td>{{ "%.4f"|format(m.precision) }}</td>
-              <td>{{ "%.4f"|format(m.recall) }}</td>
-              <td>{{ "%.4f"|format(m.f1) }}</td>
+              <td>{{ "%.1f"|format(m.precision * 100) }}%</td>
+              <td>{{ "%.1f"|format(m.recall * 100) }}%</td>
+              <td>{{ "%.1f"|format(m.f1 * 100) }}%</td>
               <td>{{ m.support }}</td>
             </tr>
             {% endfor %}
@@ -247,7 +254,7 @@
       {% elif model_performance and not model_performance.has_labels %}
       <div class="results-section">
         <h2>Anomaly Detection Summary</h2>
-        <p class="meta">No ground-truth labels available.</p>
+        <p class="meta">No ground-truth labels available. Showing anomaly detection statistics.</p>
         <div class="metrics-row">
           <div class="metric-card">
             <span class="metric-value">{{ "%.1f"|format(model_performance.anomaly_rate * 100) }}%</span>
@@ -264,18 +271,18 @@
         </div>
         <div class="callout">
           <strong>Note</strong>
-          Upload a labeled CSV (with a Label column) to enable full model evaluation.
+          Without labeled data, precision/recall/F1 cannot be computed. Upload a labeled CSV dataset (with a Label column) to enable full model evaluation.
         </div>
       </div>
       {% else %}
       <div class="results-section">
         <h2>Model Performance</h2>
-        <p class="meta">No anomaly detection results to evaluate.</p>
+        <p class="meta">No anomaly detection results to evaluate. Ensure the uploaded data contains numeric features.</p>
       </div>
       {% endif %}
     </div>
 
-    <!-- CHARTS TAB -->
+    <!-- ═══════════════════════════════════════════ CHARTS TAB ═══════════════════════════════════════════ -->
     <div id="tab-charts" class="tab-content">
       <div class="charts-section">
         <h2>Data Visualizations</h2>
@@ -290,12 +297,12 @@
           {% endfor %}
         </div>
         {% else %}
-        <p class="meta">No chart data available.</p>
+        <p class="meta">No chart data available for this file.</p>
         {% endif %}
       </div>
     </div>
 
-    <!-- DEEP ANALYSIS TAB -->
+    <!-- ═══════════════════════════════════════ DEEP ANALYSIS TAB ═══════════════════════════════════════ -->
     <div id="tab-analysis" class="tab-content">
 
       {% if statistical_tests %}
@@ -317,11 +324,49 @@
         </div>
         {% endif %}
 
+        {% if statistical_tests.score_summary %}
+        {% set ss = statistical_tests.score_summary %}
+        <h3>Score Distribution Summary</h3>
+        <div class="metrics-row">
+          {% if ss.anomaly_mean_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.anomaly_mean_score }}</span>
+            <span class="metric-label">Anomaly Mean Score</span>
+          </div>
+          {% endif %}
+          {% if ss.normal_mean_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.normal_mean_score }}</span>
+            <span class="metric-label">Normal Mean Score</span>
+          </div>
+          {% endif %}
+          {% if ss.anomaly_std_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.anomaly_std_score }}</span>
+            <span class="metric-label">Anomaly Std Dev</span>
+          </div>
+          {% endif %}
+          {% if ss.normal_std_score is not none %}
+          <div class="metric-card">
+            <span class="metric-value">{{ ss.normal_std_score }}</span>
+            <span class="metric-label">Normal Std Dev</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
         {% if statistical_tests.feature_tests %}
         <h3>Feature-Level Significance</h3>
         <div class="stats-table-wrapper">
           <table class="data-table">
-            <tr><th>Feature</th><th>Anomaly Mean</th><th>Normal Mean</th><th>Effect Size</th><th>p-value</th><th>Significant</th></tr>
+            <tr>
+              <th>Feature</th>
+              <th>Anomaly Mean</th>
+              <th>Normal Mean</th>
+              <th>Effect Size</th>
+              <th>p-value</th>
+              <th>Significant</th>
+            </tr>
             {% for ft in statistical_tests.feature_tests %}
             <tr>
               <td class="nowrap">{{ ft.feature }}</td>
@@ -329,7 +374,13 @@
               <td>{{ "%.4g"|format(ft.normal_mean) }}</td>
               <td>{{ "%.4f"|format(ft.effect_size) }}</td>
               <td>{{ "%.6f"|format(ft.p_value) if ft.p_value is not none else "N/A" }}</td>
-              <td>{% if ft.significant is not none %}<span class="sig-badge {% if ft.significant %}sig-yes{% else %}sig-no{% endif %}">{{ "Yes" if ft.significant else "No" }}</span>{% else %}—{% endif %}</td>
+              <td>
+                {% if ft.significant is not none %}
+                <span class="sig-badge {% if ft.significant %}sig-yes{% else %}sig-no{% endif %}">
+                  {{ "Yes" if ft.significant else "No" }}
+                </span>
+                {% else %}—{% endif %}
+              </td>
             </tr>
             {% endfor %}
           </table>
@@ -342,42 +393,97 @@
       <div class="results-section">
         <h2>Comparison with Baselines</h2>
         <p class="meta">Isolation Forest vs Z-Score threshold baseline.</p>
+
         <div class="comparison-row">
           <div class="comparison-card">
             <h3>Isolation Forest</h3>
             <div class="stats-grid">
-              <div class="stat-card"><span class="stat-value">{{ baseline_comparison.isolation_forest.anomaly_count }}</span><span class="stat-label">Anomalies</span></div>
-              <div class="stat-card"><span class="stat-value">{{ "%.1f"|format(baseline_comparison.isolation_forest.anomaly_rate * 100) }}%</span><span class="stat-label">Anomaly Rate</span></div>
+              <div class="stat-card">
+                <span class="stat-value">{{ baseline_comparison.isolation_forest.anomaly_count }}</span>
+                <span class="stat-label">Anomalies</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(baseline_comparison.isolation_forest.anomaly_rate * 100) }}%</span>
+                <span class="stat-label">Anomaly Rate</span>
+              </div>
               {% if baseline_comparison.isolation_forest.metrics %}
-              <div class="stat-card metric-good"><span class="stat-value">{{ "%.1f"|format(baseline_comparison.isolation_forest.metrics.f1 * 100) }}%</span><span class="stat-label">F1 Score</span></div>
+              {% set ifm = baseline_comparison.isolation_forest.metrics %}
+              <div class="stat-card metric-good">
+                <span class="stat-value">{{ "%.1f"|format(ifm.f1 * 100) }}%</span>
+                <span class="stat-label">F1 Score</span>
+              </div>
               {% endif %}
             </div>
           </div>
           <div class="comparison-card">
             <h3>Z-Score Baseline</h3>
             <div class="stats-grid">
-              <div class="stat-card"><span class="stat-value">{{ baseline_comparison.zscore_baseline.anomaly_count }}</span><span class="stat-label">Anomalies</span></div>
-              <div class="stat-card"><span class="stat-value">{{ "%.1f"|format(baseline_comparison.zscore_baseline.anomaly_rate * 100) }}%</span><span class="stat-label">Anomaly Rate</span></div>
+              <div class="stat-card">
+                <span class="stat-value">{{ baseline_comparison.zscore_baseline.anomaly_count }}</span>
+                <span class="stat-label">Anomalies</span>
+              </div>
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(baseline_comparison.zscore_baseline.anomaly_rate * 100) }}%</span>
+                <span class="stat-label">Anomaly Rate</span>
+              </div>
               {% if baseline_comparison.zscore_baseline.metrics %}
-              <div class="stat-card"><span class="stat-value">{{ "%.1f"|format(baseline_comparison.zscore_baseline.metrics.f1 * 100) }}%</span><span class="stat-label">F1 Score</span></div>
+              {% set zsm = baseline_comparison.zscore_baseline.metrics %}
+              <div class="stat-card">
+                <span class="stat-value">{{ "%.1f"|format(zsm.f1 * 100) }}%</span>
+                <span class="stat-label">F1 Score</span>
+              </div>
               {% endif %}
             </div>
           </div>
         </div>
+
         {% if baseline_comparison.agreement %}
+        {% set ag = baseline_comparison.agreement %}
         <h3>Model Agreement</h3>
         <div class="metrics-row">
-          <div class="metric-card"><span class="metric-value">{{ "%.1f"|format(baseline_comparison.agreement.agreement_rate * 100) }}%</span><span class="metric-label">Agreement Rate</span></div>
-          <div class="metric-card"><span class="metric-value">{{ baseline_comparison.agreement.both_flagged }}</span><span class="metric-label">Both Flagged</span></div>
-          <div class="metric-card"><span class="metric-value">{{ baseline_comparison.agreement.only_isolation_forest }}</span><span class="metric-label">Only IF</span></div>
-          <div class="metric-card"><span class="metric-value">{{ baseline_comparison.agreement.only_zscore }}</span><span class="metric-label">Only Z-Score</span></div>
+          <div class="metric-card">
+            <span class="metric-value">{{ "%.1f"|format(ag.agreement_rate * 100) }}%</span>
+            <span class="metric-label">Agreement Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.both_flagged }}</span>
+            <span class="metric-label">Both Flagged</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.only_isolation_forest }}</span>
+            <span class="metric-label">Only IF</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ ag.only_zscore }}</span>
+            <span class="metric-label">Only Z-Score</span>
+          </div>
         </div>
         {% endif %}
+
         {% if chart_data.get('model_vs_baseline') %}
         <div class="charts-grid" style="margin-top:16px">
-          <div class="chart-card"><img src="{{ chart_data['model_vs_baseline'] }}" alt="Model vs Baseline" style="width:100%;border-radius:8px;display:block;" /></div>
+          <div class="chart-card">
+            <img src="{{ chart_data['model_vs_baseline'] }}" alt="Model vs Baseline" style="width:100%;border-radius:8px;display:block;" />
+          </div>
         </div>
         {% endif %}
+
+        <div class="callout">
+          <strong>Interpretation</strong>
+          {% if baseline_comparison.isolation_forest.metrics and baseline_comparison.zscore_baseline.metrics %}
+          {% set if_f1 = baseline_comparison.isolation_forest.metrics.f1 %}
+          {% set zs_f1 = baseline_comparison.zscore_baseline.metrics.f1 %}
+          {% if if_f1 > zs_f1 %}
+          Isolation Forest outperforms the z-score baseline (F1: {{ "%.2f"|format(if_f1) }} vs {{ "%.2f"|format(zs_f1) }}), confirming the value of the ensemble tree-based approach.
+          {% elif if_f1 == zs_f1 %}
+          Both methods achieve identical F1 scores ({{ "%.2f"|format(if_f1) }}), suggesting straightforward anomaly patterns.
+          {% else %}
+          The z-score baseline outperforms Isolation Forest (F1: {{ "%.2f"|format(zs_f1) }} vs {{ "%.2f"|format(if_f1) }}). This dataset may have simpler anomaly patterns.
+          {% endif %}
+          {% else %}
+          Isolation Forest detected {{ baseline_comparison.isolation_forest.anomaly_count }} anomalies while z-score found {{ baseline_comparison.zscore_baseline.anomaly_count }}. {{ "%.1f"|format(baseline_comparison.agreement.agreement_rate * 100) }}% overall agreement.
+          {% endif %}
+        </div>
       </div>
       {% endif %}
 
@@ -390,7 +496,9 @@
           <div class="hypothesis-card">
             <div class="hypothesis-id">{{ h.id }}</div>
             <div class="hypothesis-statement">{{ h.hypothesis }}</div>
-            <span class="hypothesis-result {% if h.result == 'SUPPORTED' %}supported{% elif 'PARTIAL' in h.result %}partial{% else %}not-supported{% endif %}">{{ h.result }}</span>
+            <span class="hypothesis-result {% if h.result == 'SUPPORTED' %}supported{% elif 'PARTIAL' in h.result %}partial{% else %}not-supported{% endif %}">
+              {{ h.result }}
+            </span>
             <div class="hypothesis-evidence">{{ h.evidence }}</div>
             <div class="hypothesis-detail">{{ h.detail }}</div>
           </div>
@@ -402,9 +510,12 @@
       {% if anomaly_result and anomaly_result.feature_importances %}
       <div class="results-section">
         <h2>Feature Importance Analysis</h2>
+        <p class="meta">Features ranked by contribution to anomaly detection (mean absolute deviation, normalized by standard deviation).</p>
         {% if chart_data.get('feature_importances') %}
         <div class="charts-grid">
-          <div class="chart-card"><img src="{{ chart_data['feature_importances'] }}" alt="Feature Importance" style="width:100%;border-radius:8px;display:block;" /></div>
+          <div class="chart-card">
+            <img src="{{ chart_data['feature_importances'] }}" alt="Feature Importance" style="width:100%;border-radius:8px;display:block;" />
+          </div>
         </div>
         {% endif %}
         <div class="stats-table-wrapper" style="margin-top:16px">
@@ -421,7 +532,7 @@
           <strong>Interpretation</strong>
           {% set top_features = anomaly_result.feature_importances.keys()|list %}
           The most influential feature is <strong style="display:inline;font-size:inherit;">{{ top_features[0] if top_features else 'N/A' }}</strong>.
-          Higher scores indicate greater divergence between normal and anomalous records.
+          Features with higher importance scores show greater statistical divergence between normal and anomalous records.
         </div>
       </div>
       {% endif %}
@@ -430,61 +541,96 @@
       <div class="results-section">
         <h2>Error Analysis</h2>
         <div class="metrics-row">
-          <div class="metric-card metric-bad"><span class="metric-value">{{ error_analysis.total_errors }}</span><span class="metric-label">Total Errors</span></div>
-          <div class="metric-card {% if error_analysis.error_rate <= 0.1 %}metric-good{% elif error_analysis.error_rate <= 0.25 %}metric-warn{% else %}metric-bad{% endif %}">
-            <span class="metric-value">{{ "%.1f"|format(error_analysis.error_rate * 100) }}%</span><span class="metric-label">Error Rate</span>
+          <div class="metric-card metric-bad">
+            <span class="metric-value">{{ error_analysis.total_errors }}</span>
+            <span class="metric-label">Total Errors</span>
           </div>
-          <div class="metric-card"><span class="metric-value">{{ error_analysis.false_positives.count }}</span><span class="metric-label">False Positives</span></div>
-          <div class="metric-card"><span class="metric-value">{{ error_analysis.false_negatives.count }}</span><span class="metric-label">False Negatives</span></div>
+          <div class="metric-card {% if error_analysis.error_rate <= 0.1 %}metric-good{% elif error_analysis.error_rate <= 0.25 %}metric-warn{% else %}metric-bad{% endif %}">
+            <span class="metric-value">{{ "%.1f"|format(error_analysis.error_rate * 100) }}%</span>
+            <span class="metric-label">Error Rate</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ error_analysis.false_positives.count }}</span>
+            <span class="metric-label">False Positives</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-value">{{ error_analysis.false_negatives.count }}</span>
+            <span class="metric-label">False Negatives</span>
+          </div>
         </div>
+
         {% if error_analysis.interpretation %}
         <div class="callout {% if error_analysis.error_rate <= 0.1 %}callout-success{% elif error_analysis.error_rate <= 0.25 %}callout-warning{% else %}callout-danger{% endif %}">
-          <strong>Error Pattern Analysis</strong> {{ error_analysis.interpretation }}
+          <strong>Error Pattern Analysis</strong>
+          {{ error_analysis.interpretation }}
         </div>
         {% endif %}
+
         {% if error_analysis.false_positives.by_category or error_analysis.false_negatives.by_category %}
         <div class="comparison-row">
           {% if error_analysis.false_positives.by_category %}
           <div class="comparison-card">
             <h3>False Positives by Category</h3>
-            <table class="data-table"><tr><th>Category</th><th>Count</th></tr>
-            {% for cat, count in error_analysis.false_positives.by_category.items() %}<tr><td>{{ cat }}</td><td>{{ count }}</td></tr>{% endfor %}
+            <p class="meta">Benign traffic incorrectly flagged (FP rate: {{ "%.1f"|format(error_analysis.false_positives.rate * 100) }}%).</p>
+            {% set fp_total = error_analysis.false_positives.by_category.values()|sum or 1 %}
+            <table class="data-table">
+              <tr><th>Category</th><th>Count</th><th>%</th></tr>
+              {% for cat, count in error_analysis.false_positives.by_category.items() %}
+              <tr><td>{{ cat }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / fp_total * 100) }}%</td></tr>
+              {% endfor %}
             </table>
           </div>
           {% endif %}
           {% if error_analysis.false_negatives.by_category %}
           <div class="comparison-card">
             <h3>False Negatives by Category</h3>
-            <table class="data-table"><tr><th>Category</th><th>Count</th></tr>
-            {% for cat, count in error_analysis.false_negatives.by_category.items() %}<tr><td>{{ cat }}</td><td>{{ count }}</td></tr>{% endfor %}
+            <p class="meta">Malicious traffic missed (FN rate: {{ "%.1f"|format(error_analysis.false_negatives.rate * 100) }}%).</p>
+            {% set fn_total = error_analysis.false_negatives.by_category.values()|sum or 1 %}
+            <table class="data-table">
+              <tr><th>Category</th><th>Count</th><th>%</th></tr>
+              {% for cat, count in error_analysis.false_negatives.by_category.items() %}
+              <tr><td>{{ cat }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / fn_total * 100) }}%</td></tr>
+              {% endfor %}
             </table>
           </div>
           {% endif %}
         </div>
         {% endif %}
+
         {% if chart_data.get('fp_by_category') or chart_data.get('fn_by_category') %}
         <div class="charts-grid" style="margin-top:16px">
-          {% if chart_data.get('fp_by_category') %}<div class="chart-card"><img src="{{ chart_data['fp_by_category'] }}" alt="FP by Category" style="width:100%;border-radius:8px;display:block;" /></div>{% endif %}
-          {% if chart_data.get('fn_by_category') %}<div class="chart-card"><img src="{{ chart_data['fn_by_category'] }}" alt="FN by Category" style="width:100%;border-radius:8px;display:block;" /></div>{% endif %}
+          {% if chart_data.get('fp_by_category') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['fp_by_category'] }}" alt="False Positives by Category" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
+          {% if chart_data.get('fn_by_category') %}
+          <div class="chart-card">
+            <img src="{{ chart_data['fn_by_category'] }}" alt="False Negatives by Category" style="width:100%;border-radius:8px;display:block;" />
+          </div>
+          {% endif %}
         </div>
         {% endif %}
       </div>
       {% elif error_analysis and not error_analysis.has_labels %}
       <div class="results-section">
         <h2>Error Analysis</h2>
-        <div class="callout"><strong>Note</strong> Error analysis requires labeled data.</div>
+        <div class="callout">
+          <strong>Note</strong>
+          Error analysis requires labeled data with ground-truth labels to identify false positives and false negatives.
+        </div>
       </div>
       {% endif %}
 
       {% if not statistical_tests and not baseline_comparison and not hypotheses and not error_analysis %}
       <div class="results-section">
         <h2>Deep Analysis</h2>
-        <p class="meta">Not enough data for deep analysis. Ensure the data contains numeric features.</p>
+        <p class="meta">Not enough data for deep analysis. Ensure the uploaded data contains numeric features.</p>
       </div>
       {% endif %}
     </div>
 
-    <!-- STATISTICS TAB -->
+    <!-- ═══════════════════════════════════════════ STATISTICS TAB ═══════════════════════════════════════════ -->
     {% if statistics and statistics.stats %}
     <div id="tab-stats" class="tab-content">
       <div class="results-section">
@@ -520,7 +666,7 @@
     </div>
     {% endif %}
 
-    <!-- ANOMALIES TAB -->
+    <!-- ═══════════════════════════════════════════ ANOMALIES TAB ═══════════════════════════════════════════ -->
     {% if anomaly_result and anomaly_result.anomaly_count is defined %}
     <div id="tab-anomalies" class="tab-content">
       <div class="results-section">
@@ -529,6 +675,10 @@
           <div class="stat-card {% if anomaly_result.anomaly_count > 0 %}summary-danger{% endif %}">
             <span class="stat-value">{{ anomaly_result.anomaly_count }}</span>
             <span class="stat-label">Anomalies</span>
+          </div>
+          <div class="stat-card">
+            <span class="stat-value">{{ "%.1f"|format(anomaly_result.anomaly_count / (anomaly_result.total_records or 1) * 100) }}%</span>
+            <span class="stat-label">Anomaly Rate</span>
           </div>
           <div class="stat-card">
             <span class="stat-value">{{ anomaly_result.total_records }}</span>
@@ -573,14 +723,24 @@
   </div>
 
   <script>
-    function switchTab(tabName) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-      document.querySelector(`[data-tab="${tabName}"]`)?.classList.add('active');
-      document.getElementById(`tab-${tabName}`)?.classList.add('active');
-    }
-
-
+    (function() {
+      var tabContainer = document.getElementById('mainTabs');
+      if (tabContainer) {
+        tabContainer.addEventListener('click', function(e) {
+          var btn = e.target.closest('.tab');
+          if (!btn) return;
+          var tabName = btn.getAttribute('data-tab');
+          if (!tabName) return;
+          var allTabs = document.querySelectorAll('.tab');
+          for (var i = 0; i < allTabs.length; i++) allTabs[i].classList.remove('active');
+          var allContent = document.querySelectorAll('.tab-content');
+          for (var i = 0; i < allContent.length; i++) allContent[i].classList.remove('active');
+          btn.classList.add('active');
+          var panel = document.getElementById('tab-' + tabName);
+          if (panel) panel.classList.add('active');
+        });
+      }
+    })();
   </script>
 </body>
 </html>
