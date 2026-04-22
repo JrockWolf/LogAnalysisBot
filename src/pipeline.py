@@ -1,7 +1,13 @@
 """Data science pipeline: anomaly detection and statistical analysis.
 
-Uses Isolation Forest for unsupervised anomaly detection on numeric features
-extracted from any supported file format.
+Uses multiple ML models for unsupervised anomaly detection on numeric features
+extracted from any supported file format:
+  - Isolation Forest: ensemble tree-based anomaly detection
+  - Local Outlier Factor (LOF): density-based local anomaly detection
+  - One-Class SVM: kernel-based novelty detection
+  - Z-Score Threshold: simple statistical baseline
+  - DBSCAN Clustering: density-based spatial clustering for outlier detection
+  - Random Forest (supervised): used when labeled data is available
 """
 
 from __future__ import annotations
@@ -144,6 +150,394 @@ def run_isolation_forest(
         "feature_importances": importances,
         "anomaly_records": anomaly_records[:100],  # cap for display
     }
+
+
+def run_local_outlier_factor(
+    records: List[Dict[str, Any]],
+    contamination: float = 0.1,
+    n_neighbors: int = 20,
+) -> Dict[str, Any]:
+    """Run Local Outlier Factor (LOF) anomaly detection.
+
+    LOF measures local density deviation of each point relative to its neighbors.
+    Good at detecting local anomalies that Isolation Forest may miss.
+
+    Returns same structure as run_isolation_forest.
+    """
+    try:
+        from sklearn.neighbors import LocalOutlierFactor
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+    except ImportError:
+        raise ImportError("scikit-learn and numpy are required. pip install scikit-learn numpy")
+
+    feature_names, matrix = extract_numeric_features(records)
+    if not feature_names or not matrix:
+        return {
+            "anomaly_indices": [], "anomaly_scores": [], "anomaly_count": 0,
+            "total_records": len(records), "feature_names": [], "feature_importances": {},
+            "anomaly_records": [], "error": "No numeric features found.",
+        }
+
+    X = np.array(matrix, dtype=np.float64)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    actual_neighbors = min(n_neighbors, max(1, len(X) - 1))
+    clf = LocalOutlierFactor(
+        n_neighbors=actual_neighbors,
+        contamination=min(contamination, 0.5),
+        n_jobs=-1,
+    )
+    predictions = clf.fit_predict(X_scaled)
+    scores = -clf.negative_outlier_factor_  # higher = more anomalous
+
+    anomaly_indices = [i for i, p in enumerate(predictions) if p == -1]
+    anomaly_records = [records[i] for i in anomaly_indices]
+
+    # Feature importance via mean score shift
+    importances: Dict[str, float] = {}
+    for j, fname in enumerate(feature_names):
+        anom_vals = [X[i, j] for i in anomaly_indices]
+        normal_vals = [X[i, j] for i in range(len(X)) if i not in set(anomaly_indices)]
+        if anom_vals and normal_vals:
+            anom_mean = sum(anom_vals) / len(anom_vals)
+            norm_mean = sum(normal_vals) / len(normal_vals)
+            norm_std = max(1e-10, (sum((v - norm_mean) ** 2 for v in normal_vals) / len(normal_vals)) ** 0.5)
+            importances[fname] = round(abs(anom_mean - norm_mean) / norm_std, 4)
+        else:
+            importances[fname] = 0.0
+    importances = dict(sorted(importances.items(), key=lambda x: -x[1]))
+
+    return {
+        "anomaly_indices": anomaly_indices,
+        "anomaly_scores": [round(float(s), 4) for s in scores],
+        "anomaly_count": len(anomaly_indices),
+        "total_records": len(records),
+        "feature_names": feature_names,
+        "feature_importances": importances,
+        "anomaly_records": anomaly_records[:100],
+        "method": "Local Outlier Factor",
+    }
+
+
+def run_one_class_svm(
+    records: List[Dict[str, Any]],
+    nu: float = 0.1,
+    kernel: str = "rbf",
+) -> Dict[str, Any]:
+    """Run One-Class SVM novelty detection.
+
+    Learns a tight boundary around normal data. Suited for datasets where
+    anomalies are truly novel/out-of-distribution.
+
+    Returns same structure as run_isolation_forest.
+    """
+    try:
+        from sklearn.svm import OneClassSVM
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+    except ImportError:
+        raise ImportError("scikit-learn and numpy are required. pip install scikit-learn numpy")
+
+    feature_names, matrix = extract_numeric_features(records)
+    if not feature_names or not matrix:
+        return {
+            "anomaly_indices": [], "anomaly_scores": [], "anomaly_count": 0,
+            "total_records": len(records), "feature_names": [], "feature_importances": {},
+            "anomaly_records": [], "error": "No numeric features found.",
+        }
+
+    X = np.array(matrix, dtype=np.float64)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    # Cap dataset size for SVM performance (O(n^2) kernel computation)
+    max_samples = 5000
+    if len(X_scaled) > max_samples:
+        idx = np.random.RandomState(42).choice(len(X_scaled), max_samples, replace=False)
+        X_fit = X_scaled[idx]
+    else:
+        X_fit = X_scaled
+
+    clf = OneClassSVM(nu=min(nu, 0.5), kernel=kernel, gamma="scale")
+    clf.fit(X_fit)
+    predictions = clf.predict(X_scaled)
+    scores = clf.decision_function(X_scaled)  # lower = more anomalous
+
+    anomaly_indices = [i for i, p in enumerate(predictions) if p == -1]
+    anomaly_records = [records[i] for i in anomaly_indices]
+
+    importances: Dict[str, float] = {}
+    anom_set = set(anomaly_indices)
+    for j, fname in enumerate(feature_names):
+        anom_vals = [X[i, j] for i in anomaly_indices]
+        normal_vals = [X[i, j] for i in range(len(X)) if i not in anom_set]
+        if anom_vals and normal_vals:
+            anom_mean = sum(anom_vals) / len(anom_vals)
+            norm_mean = sum(normal_vals) / len(normal_vals)
+            norm_std = max(1e-10, (sum((v - norm_mean) ** 2 for v in normal_vals) / len(normal_vals)) ** 0.5)
+            importances[fname] = round(abs(anom_mean - norm_mean) / norm_std, 4)
+        else:
+            importances[fname] = 0.0
+    importances = dict(sorted(importances.items(), key=lambda x: -x[1]))
+
+    return {
+        "anomaly_indices": anomaly_indices,
+        "anomaly_scores": [round(float(s), 4) for s in scores],
+        "anomaly_count": len(anomaly_indices),
+        "total_records": len(records),
+        "feature_names": feature_names,
+        "feature_importances": importances,
+        "anomaly_records": anomaly_records[:100],
+        "method": "One-Class SVM",
+    }
+
+
+def run_dbscan(
+    records: List[Dict[str, Any]],
+    eps: float = 0.5,
+    min_samples: int = 5,
+) -> Dict[str, Any]:
+    """Run DBSCAN clustering for outlier/noise detection.
+
+    Points not belonging to any cluster (label=-1) are considered outliers.
+    DBSCAN is effective at finding arbitrarily-shaped clusters and flagging
+    sparse outlier points.
+
+    Returns same structure as run_isolation_forest.
+    """
+    try:
+        from sklearn.cluster import DBSCAN
+        from sklearn.preprocessing import StandardScaler
+        import numpy as np
+    except ImportError:
+        raise ImportError("scikit-learn and numpy are required. pip install scikit-learn numpy")
+
+    feature_names, matrix = extract_numeric_features(records)
+    if not feature_names or not matrix:
+        return {
+            "anomaly_indices": [], "anomaly_scores": [], "anomaly_count": 0,
+            "total_records": len(records), "feature_names": [], "feature_importances": {},
+            "anomaly_records": [], "error": "No numeric features found.",
+        }
+
+    X = np.array(matrix, dtype=np.float64)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    clf = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1)
+    labels = clf.fit_predict(X_scaled)
+
+    # Noise points (label -1) are anomalies
+    anomaly_indices = [i for i, lb in enumerate(labels) if lb == -1]
+    anomaly_records = [records[i] for i in anomaly_indices]
+    n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
+
+    # Pseudo-score: distance to nearest cluster center (or 1.0 for noise)
+    cluster_centers: Dict[int, Any] = {}
+    for cid in set(labels):
+        if cid == -1:
+            continue
+        pts = X_scaled[labels == cid]
+        cluster_centers[cid] = np.mean(pts, axis=0)
+
+    scores_arr = np.zeros(len(X_scaled))
+    for i, (lb, pt) in enumerate(zip(labels, X_scaled)):
+        if lb == -1:
+            if cluster_centers:
+                dists = [float(np.linalg.norm(pt - c)) for c in cluster_centers.values()]
+                scores_arr[i] = float(min(dists))
+            else:
+                scores_arr[i] = 1.0
+        else:
+            center = cluster_centers.get(lb)
+            if center is not None:
+                scores_arr[i] = float(np.linalg.norm(pt - center))
+
+    importances: Dict[str, float] = {}
+    anom_set = set(anomaly_indices)
+    for j, fname in enumerate(feature_names):
+        anom_vals = [X[i, j] for i in anomaly_indices]
+        normal_vals = [X[i, j] for i in range(len(X)) if i not in anom_set]
+        if anom_vals and normal_vals:
+            anom_mean = sum(anom_vals) / len(anom_vals)
+            norm_mean = sum(normal_vals) / len(normal_vals)
+            norm_std = max(1e-10, (sum((v - norm_mean) ** 2 for v in normal_vals) / len(normal_vals)) ** 0.5)
+            importances[fname] = round(abs(anom_mean - norm_mean) / norm_std, 4)
+        else:
+            importances[fname] = 0.0
+    importances = dict(sorted(importances.items(), key=lambda x: -x[1]))
+
+    return {
+        "anomaly_indices": anomaly_indices,
+        "anomaly_scores": [round(float(s), 4) for s in scores_arr],
+        "anomaly_count": len(anomaly_indices),
+        "total_records": len(records),
+        "feature_names": feature_names,
+        "feature_importances": importances,
+        "anomaly_records": anomaly_records[:100],
+        "method": "DBSCAN",
+        "n_clusters": n_clusters,
+    }
+
+
+def run_random_forest_supervised(
+    records: List[Dict[str, Any]],
+    n_estimators: int = 100,
+) -> Dict[str, Any]:
+    """Run supervised Random Forest classification when labeled data is available.
+
+    Uses ground-truth _label/_category fields for training. Returns feature
+    importances and per-record predictions alongside standard anomaly result shape.
+    Falls back gracefully if no labels are present.
+    """
+    try:
+        from sklearn.ensemble import RandomForestClassifier
+        from sklearn.preprocessing import StandardScaler, LabelEncoder
+        from sklearn.model_selection import cross_val_score
+        import numpy as np
+    except ImportError:
+        raise ImportError("scikit-learn and numpy are required. pip install scikit-learn numpy")
+
+    has_labels = any(r.get("_label") for r in records[:100])
+    if not has_labels:
+        return {
+            "anomaly_indices": [], "anomaly_scores": [], "anomaly_count": 0,
+            "total_records": len(records), "feature_names": [], "feature_importances": {},
+            "anomaly_records": [],
+            "error": "No ground-truth labels found. Random Forest requires labeled data.",
+            "method": "Random Forest (supervised)",
+        }
+
+    feature_names, matrix = extract_numeric_features(records)
+    if not feature_names or not matrix:
+        return {
+            "anomaly_indices": [], "anomaly_scores": [], "anomaly_count": 0,
+            "total_records": len(records), "feature_names": [], "feature_importances": {},
+            "anomaly_records": [], "error": "No numeric features found.",
+            "method": "Random Forest (supervised)",
+        }
+
+    X = np.array(matrix, dtype=np.float64)
+    X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    raw_labels = [r.get("_label", "benign").lower() for r in records]
+    le = LabelEncoder()
+    y = le.fit_transform(raw_labels)
+    classes = list(le.classes_)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    clf = RandomForestClassifier(n_estimators=n_estimators, random_state=42, n_jobs=-1)
+    clf.fit(X_scaled, y)
+    preds = clf.predict(X_scaled)
+    proba = clf.predict_proba(X_scaled)
+
+    # Anomaly = any non-benign prediction
+    benign_class_idx = classes.index("benign") if "benign" in classes else -1
+    if benign_class_idx >= 0:
+        anomaly_indices = [i for i, p in enumerate(preds) if p != benign_class_idx]
+        # Score = 1 - P(benign)
+        scores = [round(1.0 - float(proba[i, benign_class_idx]), 4) for i in range(len(preds))]
+    else:
+        anomaly_indices = []
+        scores = [0.0] * len(preds)
+
+    anomaly_records = [records[i] for i in anomaly_indices]
+
+    # RF gives native feature importances
+    importances = {
+        fname: round(float(imp), 4)
+        for fname, imp in zip(feature_names, clf.feature_importances_)
+    }
+    importances = dict(sorted(importances.items(), key=lambda x: -x[1]))
+
+    # Cross-validation accuracy (quick 3-fold, capped at 2000 samples for speed)
+    cv_score = None
+    cap = 2000
+    try:
+        X_cv = X_scaled[:cap]
+        y_cv = y[:cap]
+        cv_scores = cross_val_score(clf, X_cv, y_cv, cv=3, scoring="accuracy", n_jobs=-1)
+        cv_score = round(float(np.mean(cv_scores)), 4)
+    except Exception:
+        pass
+
+    return {
+        "anomaly_indices": anomaly_indices,
+        "anomaly_scores": scores,
+        "anomaly_count": len(anomaly_indices),
+        "total_records": len(records),
+        "feature_names": feature_names,
+        "feature_importances": importances,
+        "anomaly_records": anomaly_records[:100],
+        "method": "Random Forest (supervised)",
+        "classes": classes,
+        "cv_accuracy": cv_score,
+    }
+
+
+def run_all_models(
+    records: List[Dict[str, Any]],
+    contamination: float = 0.1,
+) -> Dict[str, Any]:
+    """Run all available anomaly detection models and return a comparison summary.
+
+    Returns a dict keyed by model name, each value being the standard anomaly
+    result dict. Also includes an 'ensemble' key with majority-vote consensus.
+    """
+    results: Dict[str, Any] = {}
+
+    for model_name, runner in [
+        ("isolation_forest", lambda: run_isolation_forest(records, contamination)),
+        ("local_outlier_factor", lambda: run_local_outlier_factor(records, contamination)),
+        ("dbscan", lambda: run_dbscan(records)),
+    ]:
+        try:
+            results[model_name] = runner()
+        except Exception as e:
+            results[model_name] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+
+    # One-Class SVM only for smaller datasets (performance constraint)
+    total = len(records)
+    if total <= 5000:
+        try:
+            results["one_class_svm"] = run_one_class_svm(records, nu=contamination)
+        except Exception as e:
+            results["one_class_svm"] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+
+    # Supervised RF if labels available
+    has_labels = any(r.get("_label") for r in records[:50])
+    if has_labels:
+        try:
+            results["random_forest"] = run_random_forest_supervised(records)
+        except Exception as e:
+            results["random_forest"] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+
+    # Ensemble: majority vote across models with valid results
+    vote_counts: Dict[int, int] = {}
+    valid_models = [v for v in results.values() if not v.get("error") and v.get("anomaly_indices") is not None]
+    n_models = len(valid_models)
+    for model_res in valid_models:
+        for idx in model_res.get("anomaly_indices", []):
+            vote_counts[idx] = vote_counts.get(idx, 0) + 1
+
+    majority_threshold = max(1, n_models // 2 + 1)
+    ensemble_indices = sorted([idx for idx, cnt in vote_counts.items() if cnt >= majority_threshold])
+    results["ensemble"] = {
+        "anomaly_indices": ensemble_indices,
+        "anomaly_count": len(ensemble_indices),
+        "total_records": total,
+        "method": f"Ensemble majority vote ({n_models} models, threshold={majority_threshold})",
+        "votes": vote_counts,
+    }
+
+    return results
 
 
 def compute_statistics(records: List[Dict[str, Any]]) -> Dict[str, Any]:

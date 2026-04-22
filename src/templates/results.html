@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <title>Analysis Results — LogAnalysisBot</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -142,9 +145,104 @@
     </div>
     {% endif %}
 
-    {% if anomaly_result and anomaly_result.anomaly_count is defined %}
+    {% if all_models_result %}
     <div class="results-section">
-      <h2>Anomaly Detection (Isolation Forest)</h2>
+      <div class="section-toolbar">
+        <h2>ML Anomaly Detection — Model Comparison</h2>
+        <span class="badge badge-alt">{{ (all_models_result.isolation_forest or {}).total_records or '—' }} records</span>
+      </div>
+
+      <table class="model-comparison-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Type</th>
+            <th style="text-align:right">Anomalies</th>
+            <th style="text-align:right">Rate</th>
+            <th>Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if all_models_result.isolation_forest %}
+          {% set r = all_models_result.isolation_forest %}
+          <tr>
+            <td><div class="model-name-cell"><span class="model-indicator if"></span>Isolation Forest</div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Ensemble / Tree</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">{{ r.feature_names|length }} features</td>
+          </tr>
+          {% endif %}
+          {% if all_models_result.local_outlier_factor %}
+          {% set r = all_models_result.local_outlier_factor %}
+          <tr>
+            <td><div class="model-name-cell"><span class="model-indicator lof"></span>Local Outlier Factor</div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Density-based</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">Neighborhood k=20</td>
+          </tr>
+          {% endif %}
+          {% if all_models_result.one_class_svm %}
+          {% set r = all_models_result.one_class_svm %}
+          <tr>
+            <td><div class="model-name-cell"><span class="model-indicator svm"></span>One-Class SVM</div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Kernel / Novelty</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">RBF kernel</td>
+          </tr>
+          {% endif %}
+          {% if all_models_result.dbscan %}
+          {% set r = all_models_result.dbscan %}
+          <tr>
+            <td><div class="model-name-cell"><span class="model-indicator db"></span>DBSCAN</div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Clustering</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">{{ r.n_clusters or 0 }} clusters found</td>
+          </tr>
+          {% endif %}
+          {% if all_models_result.random_forest %}
+          {% set r = all_models_result.random_forest %}
+          <tr>
+            <td><div class="model-name-cell"><span class="model-indicator rf"></span>Random Forest</div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Supervised</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">
+              {% if r.cv_accuracy %}CV Acc: {{ "%.1f"|format(r.cv_accuracy * 100) }}%{% else %}Labels required{% endif %}
+            </td>
+          </tr>
+          {% endif %}
+          {% if all_models_result.ensemble %}
+          {% set r = all_models_result.ensemble %}
+          <tr style="border-top:1px solid rgba(124,58,237,0.2);">
+            <td><div class="model-name-cell"><span class="model-indicator ens"></span><strong>Ensemble Consensus</strong></div></td>
+            <td><span style="font-size:11px;color:var(--muted)">Majority Vote</span></td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">≥2 models agree</td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+
+      {% if anomaly_result and anomaly_result.anomaly_records %}
+      <h3 style="margin-top:20px;">Sample Anomalous Records (Isolation Forest)</h3>
+      <div class="anomaly-records">
+        {% for rec in anomaly_result.anomaly_records[:8] %}
+        <div class="anomaly-record">
+          <span class="anomaly-badge">ANOMALY</span>
+          <span class="anomaly-text">{{ rec.get('raw', rec | string) }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% elif anomaly_result and anomaly_result.anomaly_count is defined %}
+    <div class="results-section">
+      <h2>Anomaly Detection</h2>
       <div class="stats-grid">
         <div class="stat-card {% if anomaly_result.anomaly_count > 0 %}summary-danger{% endif %}">
           <span class="stat-value">{{ anomaly_result.anomaly_count }}</span>
@@ -154,27 +252,7 @@
           <span class="stat-value">{{ "%.1f"|format(anomaly_result.anomaly_count / (anomaly_result.total_records or 1) * 100) }}%</span>
           <span class="stat-label">Anomaly Rate</span>
         </div>
-        <div class="stat-card">
-          <span class="stat-value">{{ anomaly_result.total_records }}</span>
-          <span class="stat-label">Total Records</span>
-        </div>
-        <div class="stat-card">
-          <span class="stat-value">{{ anomaly_result.feature_names|length }}</span>
-          <span class="stat-label">Features Used</span>
-        </div>
       </div>
-
-      {% if anomaly_result.anomaly_records %}
-      <h3>Sample Anomalous Records</h3>
-      <div class="anomaly-records">
-        {% for rec in anomaly_result.anomaly_records[:10] %}
-        <div class="anomaly-record">
-          <span class="anomaly-badge">ANOMALY</span>
-          <span class="anomaly-text">{{ rec.get('raw', rec | string) }}</span>
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
     </div>
     {% endif %}
 

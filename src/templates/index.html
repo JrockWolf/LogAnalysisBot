@@ -2,18 +2,43 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>LogAnalysisBot</title>
+  <title>LogAnalysisBot — AI Security Analysis</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
   <div class="container">
     <div class="hero">
+      <div class="hero-badge">
+        <span class="hero-badge-dot"></span>
+        AI-Powered Threat Detection
+      </div>
       <h1>LogAnalysisBot</h1>
       <p class="subtitle">
-        Upload files for security analysis or data visualization. Supports PCAP captures,
-        network logs, CSV datasets, JSON logs, and more.
+        Enterprise-grade security log analysis with 6 ML anomaly detection models,
+        MITRE ATT&amp;CK mapping, and multi-provider LLM enrichment.
       </p>
+      <div class="hero-stats">
+        <div class="hero-stat">
+          <span class="hero-stat-value">6</span>
+          <span class="hero-stat-label">ML Models</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">5</span>
+          <span class="hero-stat-label">LLM Providers</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">200+</span>
+          <span class="hero-stat-label">ATT&amp;CK Techniques</span>
+        </div>
+        <div class="hero-stat">
+          <span class="hero-stat-value">7</span>
+          <span class="hero-stat-label">File Formats</span>
+        </div>
+      </div>
     </div>
 
     {% if error %}
@@ -34,11 +59,31 @@
       </button>
     </div>
 
+    <!-- ── Capabilities strip ────────────────────────────── -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:32px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:22px;flex-shrink:0;">🛡️</span>
+        <div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">Heuristic Detection</div><div style="font-size:12px;color:var(--muted);">Rules-based alerts for brute force, port scans, injection attacks & more</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:22px;flex-shrink:0;">🤖</span>
+        <div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">LLM Enrichment</div><div style="font-size:12px;color:var(--muted);">OpenAI, Gemini, Perplexity, DeepSeek, or local HuggingFace models</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:22px;flex-shrink:0;">⚡</span>
+        <div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">ML Anomaly Detection</div><div style="font-size:12px;color:var(--muted);">IsolationForest, LOF, One-Class SVM, DBSCAN, Random Forest + Ensemble</div></div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px 18px;display:flex;align-items:flex-start;gap:12px;">
+        <span style="font-size:22px;flex-shrink:0;">🗺️</span>
+        <div><div style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:3px;">MITRE ATT&amp;CK</div><div style="font-size:12px;color:var(--muted);">Automatic tactic &amp; technique mapping with direct ATT&amp;CK links</div></div>
+      </div>
+    </div>
+
     <!-- SECTION 1: ANALYZE -->
     <div id="tab-analyze" class="tab-content active">
       <div class="section-header">
         <h2>Security Analysis</h2>
-        <p class="meta">Upload a file or paste data for security findings, MITRE ATT&CK mapping, and anomaly detection.</p>
+        <p class="meta">Upload a file or paste data for threat findings, MITRE ATT&amp;CK mapping, and multi-model anomaly detection.</p>
       </div>
 
       <div class="grid-results">
@@ -149,29 +194,30 @@
         <div class="format-item">
           <span class="format-icon">📦</span>
           <strong>PCAP / PCAPNG</strong>
-          <span class="meta">Wireshark captures</span>
+          <span>Wireshark captures</span>
         </div>
         <div class="format-item">
           <span class="format-icon">📊</span>
           <strong>CSV</strong>
-          <span class="meta">All datasets supported</span>
+          <span>All datasets supported</span>
         </div>
         <div class="format-item">
           <span class="format-icon">📋</span>
           <strong>JSON / JSONL</strong>
-          <span class="meta">Structured logs</span>
+          <span>Structured logs</span>
         </div>
         <div class="format-item">
           <span class="format-icon">📝</span>
           <strong>Text / Syslog</strong>
-          <span class="meta">Network & system logs</span>
+          <span>Network &amp; system logs</span>
         </div>
         <div class="format-item">
           <span class="format-icon">🗜️</span>
           <strong>GZ / ZIP</strong>
-          <span class="meta">Compressed archives</span>
+          <span>Compressed archives</span>
         </div>
       </div>
+      <p style="margin-top:28px;font-size:12px;color:var(--muted);">API keys are used for this request only — never stored or logged.</p>
     </div>
   </div>
 

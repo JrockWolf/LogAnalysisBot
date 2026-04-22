@@ -1,5 +1,7 @@
 from pathlib import Path
 import os
+import asyncio
+import concurrent.futures
 from typing import Optional, Dict
 import logging
 try:
@@ -310,7 +312,7 @@ class LLMAdapter:
         self.active_model = model_name
         payload = {"query": prompt, "top_n": 1, "model": model_name}
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            resp = requests.post(url, json=payload, headers=headers, timeout=(5, 25))
             resp.raise_for_status()
             data = resp.json()
             # try best-effort extraction
@@ -387,7 +389,7 @@ class LLMAdapter:
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0},
             }
-            resp = requests_lib.post(url, json=payload, timeout=20)
+            resp = requests_lib.post(url, json=payload, timeout=(5, 25))
             try:
                 resp.raise_for_status()
             except requests_lib.exceptions.HTTPError as http_err:  # type: ignore[attr-defined]
@@ -453,7 +455,7 @@ class LLMAdapter:
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         payload = {"input": prompt, "max_tokens": max_tokens}
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=15)
+            resp = requests.post(url, json=payload, headers=headers, timeout=(5, 25))
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, dict):
@@ -622,3 +624,56 @@ class LLMAdapter:
         approx_word_tokens = len(text.split())
         approx_char_tokens = max(1, len(text) // 4)
         return max(approx_word_tokens, approx_char_tokens)
+
+    def generate_with_timeout(
+        self,
+        prompt: str,
+        max_tokens: int = 256,
+        timeout_seconds: float = 30.0,
+    ) -> str:
+        """Call generate() with a hard wall-clock timeout.
+
+        Raises TimeoutError if the LLM call takes longer than *timeout_seconds*.
+        This prevents the web UI from hanging for 3+ minutes on slow providers.
+        """
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(self.generate, prompt, max_tokens)
+            try:
+                return future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                logger.warning(
+                    "LLM call timed out after %.0fs (provider=%s)",
+                    timeout_seconds, self.provider,
+                )
+                raise TimeoutError(
+                    f"LLM provider '{self.provider}' did not respond within "
+                    f"{timeout_seconds:.0f}s. Try a faster provider or increase the timeout."
+                )
+
+    async def generate_async(
+        self,
+        prompt: str,
+        max_tokens: int = 256,
+        timeout_seconds: float = 30.0,
+    ) -> str:
+        """Async wrapper around generate() using a thread pool executor.
+
+        Allows callers (e.g. FastAPI async route handlers) to await the LLM
+        call without blocking the event loop.
+        """
+        loop = asyncio.get_event_loop()
+        try:
+            result = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: self.generate(prompt, max_tokens)),
+                timeout=timeout_seconds,
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Async LLM call timed out after %.0fs (provider=%s)",
+                timeout_seconds, self.provider,
+            )
+            raise TimeoutError(
+                f"LLM provider '{self.provider}' did not respond within "
+                f"{timeout_seconds:.0f}s."
+            )

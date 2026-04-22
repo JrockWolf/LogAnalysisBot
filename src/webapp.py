@@ -7,7 +7,8 @@ from .analyzer import analyze_logs_with_llm, heuristic_detect
 from .parsers import parse_log, is_labeled_dataset_csv, detect_file_type
 from .mitre_mapping import enrich_findings_with_mitre
 from .charts import generate_chart_data
-from .pipeline import run_isolation_forest, compute_statistics, dataset_overview, \
+from .pipeline import run_isolation_forest, run_local_outlier_factor, run_one_class_svm, \
+    run_dbscan, run_random_forest_supervised, run_all_models, compute_statistics, dataset_overview, \
     compute_model_performance, compute_baseline_comparison, compute_statistical_tests, \
     compute_error_analysis, compute_hypotheses
 import tempfile
@@ -289,16 +290,24 @@ async def analyze(
     # Use consistent row set for all pipeline functions
     effective_rows = ds_rows or records
 
-    # Run anomaly detection pipeline on effective_rows so indices stay consistent
+    # Run all anomaly detection models on effective_rows
     anomaly_result = None
+    all_models_result = None
     try:
-        anomaly_result = run_isolation_forest(effective_rows)
+        all_models_result = run_all_models(effective_rows)
+        anomaly_result = all_models_result.get("isolation_forest")
         if anomaly_result and anomaly_result.get("anomaly_count", 0) > 0:
             anom_pct = anomaly_result['anomaly_count'] / max(anomaly_result['total_records'], 1) * 100
             findings.append(
                 f"Anomaly Detection: {anomaly_result['anomaly_count']} of "
                 f"{anomaly_result['total_records']} records ({anom_pct:.1f}%) flagged as anomalous "
                 f"by Isolation Forest"
+            )
+        ensemble = all_models_result.get("ensemble", {})
+        if ensemble.get("anomaly_count", 0) != (anomaly_result or {}).get("anomaly_count", 0):
+            findings.append(
+                f"Ensemble consensus ({ensemble.get('method','')}) flagged "
+                f"{ensemble.get('anomaly_count', 0)} records."
             )
     except Exception as e:
         logger.warning("Anomaly detection skipped: %s", e)
@@ -319,6 +328,7 @@ async def analyze(
         "mitre_mappings": mitre_mappings,
         "dataset_summary": summary_for_charts,
         "anomaly_result": anomaly_result,
+        "all_models_result": all_models_result,
         "file_type": file_type,
         "filename": upload.filename if upload and upload.filename else "pasted_text",
     })

@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Optional
 from .parsers import parse_log, is_labeled_dataset_csv
 from .llm_adapter import LLMAdapter
 from .mitre_mapping import enrich_findings_with_mitre, map_category_to_mitre
+import os
 import re
 import math
 import logging
@@ -455,7 +456,8 @@ Log entries:
         result["llm_provider"] = llm.provider or "(unspecified)"
         result["model_used"] = llm.active_model
         logger.info("Calling LLM provider: %s", result["llm_provider"])
-        text = llm.generate(prompt_filled, max_tokens=256)
+        llm_timeout = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+        text = llm.generate_with_timeout(prompt_filled, max_tokens=256, timeout_seconds=llm_timeout)
         result["llm_text"] = text
         try:
             completion_tokens = llm.estimate_tokens(text)
@@ -499,6 +501,12 @@ Log entries:
                 seen.add(item)
                 out.append(item)
         result["findings"] = out
+        return result
+    except TimeoutError as e:
+        logger.warning("LLM call timed out: %s", e)
+        result["findings"].append(f"(Info) LLM timed out: {e}")
+        if llm and getattr(llm, "active_model", None):
+            result["model_used"] = llm.active_model
         return result
     except Exception as e:
         logger.exception("LLM generation failed: %s", e)

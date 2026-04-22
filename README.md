@@ -1,19 +1,64 @@
-# Log Analysis Helper Bot
+# LogAnalysisBot
 
-An LLM-powered log analysis assistant for security education and small SOCs, with built-in support for **all labeled intrusion detection datasets** and **MITRE ATT&CK** technique mapping.
+An AI-powered security log analysis platform for SOC teams and security researchers. Combines rule-based heuristics, 6 ML anomaly detection models, and multi-provider LLM enrichment with automatic MITRE ATT&CK mapping.
 
 ## Features
 
-- **Universal Dataset Support** — Load, parse, and analyze any labeled intrusion detection dataset (network flow CSVs with features and a Label column)
-- **MITRE ATT&CK Mapping** — Automatically map detected attacks to MITRE ATT&CK techniques with IDs, tactics, and reference URLs
-- **Network Attack Detection** — Heuristic-based detection for DDoS, DoS, brute force, port scanning, web attacks, bot activity, and infiltration
-- **Evaluation Pipeline** — Binary and per-class metrics (precision, recall, F1, accuracy, FPR), confusion matrices, and formatted reports
-- Parsers for text, JSON, CSV, and labeled network flow logs
-- Simulated log generator with common security events
-- LLM adapter for OpenAI, Perplexity, Gemini, Deepseek, and HuggingFace local models
-- Analyzer with deterministic heuristics and optional LLM-enhanced summaries
-- Multi-language translator for analysis results (Spanish, French, German, Chinese, Japanese, and more)
-- Web UI (FastAPI) and CLI (Typer) interfaces
+### 🛡️ Threat Detection
+- **Heuristic Detection** — Rules-based alerts for DDoS, DoS, brute force, port scanning, web attacks, bot activity, infiltration, and more
+- **PCAP Parsing** — Wireshark capture analysis via Scapy for network-level threat detection
+- **Syslog / Text Log Parsing** — Multi-format log ingestion with automatic format detection
+
+### 🤖 LLM Enrichment (5 Providers)
+- **OpenAI** (GPT-3.5, GPT-4, etc.)
+- **Perplexity** (sonar-pro)
+- **Google Gemini** (gemini-2.0-flash, configurable)
+- **DeepSeek**
+- **HuggingFace Transformers** (local inference, no API key required)
+- All providers use timeout protection (default 30s, configurable via `LLM_TIMEOUT_SECONDS`)
+
+### ⚡ ML Anomaly Detection (6 Models)
+| Model | Type | Notes |
+|---|---|---|
+| **Isolation Forest** | Ensemble / Tree | Fast, unsupervised, robust to outliers |
+| **Local Outlier Factor** | Density-based | Detects local anomalies, k=20 neighbors |
+| **One-Class SVM** | Kernel / Novelty | RBF kernel, capped at 5000 samples |
+| **DBSCAN** | Clustering | Noise points = anomalies, returns cluster count |
+| **Random Forest** | Supervised | Active when label columns present; 3-fold CV |
+| **Ensemble Consensus** | Majority Vote | Flags records where ≥2 models agree |
+
+### 🗺️ MITRE ATT&CK Mapping
+- Automatic technique enrichment from findings
+- 200+ mapped techniques with tactic labels and direct ATT&CK URLs
+- Displayed as clickable tags in results
+
+### 📊 Statistical Analysis
+- Dataset overview: record counts, feature distributions, category breakdown
+- Mann-Whitney U tests, independent t-tests
+- Baseline z-score anomaly comparison
+- Model performance metrics: accuracy, precision, recall, F1, FPR
+- Hypothesis testing with evidence summary
+
+### 🌐 Web UI
+- Drag-and-drop file upload
+- Multi-model comparison table in results
+- Interactive charts via matplotlib
+- Dark professional theme
+
+### 📁 Supported File Formats
+| Format | Description |
+|---|---|
+| `.pcap` / `.pcapng` / `.cap` | Wireshark network captures |
+| `.csv` | Labeled flow datasets, any schema |
+| `.json` / `.jsonl` | Structured log entries |
+| `.log` / `.txt` | Raw text / syslog lines |
+| `.gz` / `.zip` | Compressed archives (auto-extracted) |
+
+### 🔧 Additional Tools
+- **CLI** (`src/cli.py`) via Typer — analyze, eval, generate subcommands
+- **Multi-language Translator** — translate findings to Spanish, French, German, Chinese, Japanese, and more
+- **Simulated Log Generator** — generates realistic security events for testing
+- **Dataset Loader** — auto-detects and normalizes popular IDS datasets (CIC-IDS2017, UNSW-NB15, etc.)
 
 ## Quickstart
 
