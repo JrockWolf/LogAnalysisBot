@@ -22,3 +22,10 @@ scipy>=1.11.0
 
 # PCAP parsing
 scapy>=2.5.0
+
+# Desktop app
+pywebview>=5.0.0
+pyinstaller>=6.0.0
+PyQt6>=6.7.0
+PyQt6-WebEngine>=6.7.0
+qtpy>=2.4.0
