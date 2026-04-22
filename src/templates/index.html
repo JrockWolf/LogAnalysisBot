@@ -155,7 +155,7 @@
     <div id="tab-visualize" class="tab-content">
       <div class="section-header">
         <h2>Data Visualization</h2>
-        <p class="meta">Upload a dataset to generate charts, statistics, and run anomaly detection. No LLM required.</p>
+        <p class="meta">Upload a dataset to generate charts, statistics, and run anomaly detection. Optionally enable AI summary for a plain-English report.</p>
       </div>
 
       <div class="grid-results">
@@ -169,6 +169,25 @@
               <input type="file" name="upload" id="vizUpload" class="file-input-hidden" accept=".pcap,.pcapng,.cap,.csv,.json,.jsonl,.log,.txt,.gz,.zip" />
             </div>
             <div id="vizSelectedFile" class="selected-file hidden"></div>
+
+            <!-- AI Summary toggle -->
+            <label class="ai-summary-toggle">
+              <input type="checkbox" name="generate_summary" value="1" id="vizSummaryCheck" onchange="toggleVizSummary('vizSummaryOpts')">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Generate AI readable summary</span>
+            </label>
+            <div id="vizSummaryOpts" class="ai-summary-opts hidden">
+              <select name="provider" class="form-input">
+                <option value="auto">Auto-detect provider</option>
+                <option value="openai">OpenAI</option>
+                <option value="perplexity">Perplexity</option>
+                <option value="gemini">Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="transformers">Local (no key required)</option>
+              </select>
+              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" />
+            </div>
+
             <div class="actions">
               <button type="submit" class="btn-primary">Generate Charts</button>
             </div>
@@ -178,7 +197,26 @@
         <div class="upload-card">
           <h3>Paste Dataset</h3>
           <form id="vizPasteForm" action="/visualize" method="post">
-            <textarea name="pasted" rows="10" placeholder="Paste CSV data, JSON entries, or log lines..."></textarea>
+            <textarea name="pasted" rows="8" placeholder="Paste CSV data, JSON entries, or log lines..."></textarea>
+
+            <!-- AI Summary toggle -->
+            <label class="ai-summary-toggle" style="margin-top:12px;">
+              <input type="checkbox" name="generate_summary" value="1" id="vizPasteSummaryCheck" onchange="toggleVizSummary('vizPasteSummaryOpts')">
+              <span class="toggle-track"><span class="toggle-thumb"></span></span>
+              <span class="toggle-label">Generate AI readable summary</span>
+            </label>
+            <div id="vizPasteSummaryOpts" class="ai-summary-opts hidden">
+              <select name="provider" class="form-input">
+                <option value="auto">Auto-detect provider</option>
+                <option value="openai">OpenAI</option>
+                <option value="perplexity">Perplexity</option>
+                <option value="gemini">Gemini</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="transformers">Local (no key required)</option>
+              </select>
+              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" />
+            </div>
+
             <div class="actions">
               <button type="submit" class="btn-primary">Generate Charts</button>
             </div>
@@ -320,6 +358,13 @@
     }
 
     if (providerSelectors.length) updateModelVisibility(providerSelectors[0].value);
+
+    // AI summary toggle for visualize forms
+    function toggleVizSummary(optsId) {
+      var opts = document.getElementById(optsId);
+      if (!opts) return;
+      opts.classList.toggle('hidden');
+    }
   </script>
 </body>
 </html>

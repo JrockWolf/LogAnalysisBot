@@ -14,6 +14,7 @@ from .pipeline import run_isolation_forest, run_local_outlier_factor, run_one_cl
 import tempfile
 import logging
 import os
+import asyncio
 
 SUPPORTED_PROVIDERS = [
     ("auto", "Automatic (use environment or supplied key)"),
@@ -351,8 +352,12 @@ async def visualize(
     request: Request,
     upload: UploadFile | None = File(None),
     pasted: str = Form(""),
+    generate_summary: str = Form(""),
+    provider: str = Form("auto"),
+    api_key: str = Form(""),
+    model: str = Form(""),
 ):
-    """Generate charts and statistical analysis on a dataset — no LLM needed."""
+    """Generate charts, statistical analysis and an optional AI-readable summary."""
     if (not upload or not upload.filename) and not pasted.strip():
         return templates.TemplateResponse(request, "index.html", context={
             "error": "Please provide data for visualization.",
@@ -446,6 +451,81 @@ async def visualize(
         error_analysis=error_ana,
     )
 
+    # Optional AI-readable summary
+    ai_summary = None
+    ai_provider_display = None
+    if generate_summary and generate_summary not in ("", "0", "false"):
+        try:
+            from .llm_adapter import LLMAdapter
+            _prov = (provider or "").strip().lower() or None
+            if _prov == "auto":
+                _prov = None
+            _key_map: dict = {}
+            _key_value = (api_key or "").strip()
+            if _key_value:
+                if _prov in {"openai", "perplexity", "deepseek", "gemini"}:
+                    _key_map[_prov] = _key_value
+                else:
+                    if _key_value.startswith("pplx-"):
+                        _key_map["perplexity"] = _key_value
+                    elif _key_value.startswith("sk-") or _key_value.startswith("rk-"):
+                        _key_map["openai"] = _key_value
+                    elif _key_value.startswith("AIza") or _key_value.upper().startswith("AI"):
+                        _key_map["gemini"] = _key_value
+                    elif _key_value.lower().startswith("ds-"):
+                        _key_map["deepseek"] = _key_value
+
+            _model_map: dict = {}
+            _model_val = (model or "").strip()
+            if _model_val and _prov:
+                _model_map[_prov] = _model_val
+
+            llm = LLMAdapter(provider=_prov, api_keys=_key_map, model_overrides=_model_map)
+
+            # Build a compact data description for the prompt
+            _anom_count = anomaly_result.get("anomaly_count", 0) if anomaly_result else 0
+            _total = len(records)
+            _ftype = file_type
+            _cat_dist = ""
+            if summary_for_charts and isinstance(summary_for_charts, dict):
+                cats = summary_for_charts.get("category_distribution", {})
+                if cats:
+                    _cat_dist = "\nLabel distribution: " + ", ".join(
+                        f"{k}: {v}" for k, v in list(cats.items())[:10]
+                    )
+            _stats_text = ""
+            if stats and isinstance(stats, dict):
+                _numeric = stats.get("numeric_summary", {})
+                if _numeric:
+                    _stats_text = "\nNumeric feature stats: " + "; ".join(
+                        f"{col}: mean={v.get('mean', 'N/A'):.3g}, std={v.get('std', 'N/A'):.3g}"
+                        for col, v in list(_numeric.items())[:6]
+                    )
+
+            _summary_prompt = f"""You are a data analyst assistant. A user has uploaded a security/network dataset for analysis.
+Provide a clear, human-readable plain-English summary of what this data contains and the key findings.
+
+Dataset info:
+- File type: {_ftype}
+- Total records: {_total:,}
+- Anomalies detected: {_anom_count} ({(_anom_count / _total * 100) if _total else 0:.1f}%){_cat_dist}{_stats_text}
+
+Write a concise, easy-to-read analysis report (3–5 paragraphs) covering:
+1. What type of data this is and what it represents
+2. Key patterns or notable characteristics in the data
+3. What the anomalies/outliers suggest about threats or abnormal activity
+4. Actionable recommendations for investigation or remediation
+Use plain language. Avoid excessive jargon. Format with short paragraphs separated by blank lines."""
+
+            def _call_llm():
+                return llm.generate_with_timeout(_summary_prompt, max_tokens=600, timeout_seconds=30.0)
+
+            ai_summary = await asyncio.get_event_loop().run_in_executor(None, _call_llm)
+            ai_provider_display = llm.provider or provider or "auto"
+        except Exception as e:
+            logger.warning("AI summary failed: %s", e)
+            ai_summary = f"AI summary could not be generated: {e}"
+
     return templates.TemplateResponse(request, "visualize.html", context={
         "chart_data": chart_data,
         "statistics": stats,
@@ -460,4 +540,6 @@ async def visualize(
         "statistical_tests": stat_tests,
         "error_analysis": error_ana,
         "hypotheses": hypotheses,
+        "ai_summary": ai_summary,
+        "ai_provider_display": ai_provider_display,
     })

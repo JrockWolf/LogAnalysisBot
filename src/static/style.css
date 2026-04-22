@@ -931,6 +931,68 @@ pre {
 .hidden { display: none !important; }
 ul { padding-left: 20px; }
 
+/* ── AI Summary Toggle ──────────────────────────────────── */
+.ai-summary-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  margin-top: 16px;
+  user-select: none;
+}
+.ai-summary-toggle input[type="checkbox"] { display: none; }
+.toggle-track {
+  width: 40px;
+  height: 22px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 11px;
+  border: 1px solid rgba(255,255,255,0.12);
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.ai-summary-toggle input:checked ~ .toggle-track {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle-thumb {
+  width: 16px;
+  height: 16px;
+  background: #fff;
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: left 0.2s;
+}
+.ai-summary-toggle input:checked ~ .toggle-track .toggle-thumb { left: 20px; }
+.toggle-label { font-size: 13px; color: var(--muted); }
+.ai-summary-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 14px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 8px;
+}
+
+/* ── AI Summary Result Panel ────────────────────────────── */
+.ai-summary-panel {
+  background: rgba(124, 58, 237, 0.07);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  border-radius: 12px;
+  padding: 28px 32px;
+  line-height: 1.75;
+  color: var(--text);
+  font-size: 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.ai-summary-panel h3 { margin: 0 0 16px; font-size: 16px; color: var(--accent); }
+.ai-summary-meta { font-size: 11px; color: var(--muted); margin-top: 16px; }
+
 /* ── Responsive ─────────────────────────────────────────── */
 @media (max-width: 800px) {
   body { padding: 16px; }
