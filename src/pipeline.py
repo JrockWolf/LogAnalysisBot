@@ -13,6 +13,7 @@ extracted from any supported file format:
 from __future__ import annotations
 
 import math
+import re
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -32,6 +33,9 @@ def _safe_float(v: Any) -> float:
 def extract_numeric_features(records: List[Dict[str, Any]]) -> Tuple[List[str], List[List[float]]]:
     """Extract numeric columns from records into a feature matrix.
 
+    For unstructured text records (only raw/line/type), automatically falls back
+    to text-derived features so anomaly detection always works.
+
     Returns (feature_names, matrix) where matrix is list of float lists.
     """
     if not records:
@@ -50,17 +54,95 @@ def extract_numeric_features(records: List[Dict[str, Any]]) -> Tuple[List[str], 
             if val != 0.0 or str(v).strip() in ("0", "0.0", "0.00"):
                 candidate_cols[k] = candidate_cols.get(k, 0) + 1
 
-    # Keep columns where >30% of samples have numeric values
-    threshold = max(1, len(sample) * 0.3)
+    # Keep columns where >20% of samples have numeric values (lowered from 30%)
+    threshold = max(1, len(sample) * 0.20)
     feature_names = sorted(k for k, cnt in candidate_cols.items() if cnt >= threshold)
 
+    # For unstructured records with no usable numeric columns, derive text features
     if not feature_names:
-        return [], []
+        return extract_text_features(records)
 
     matrix: List[List[float]] = []
     for row in records:
         vec = [_safe_float(row.get(col, 0)) for col in feature_names]
         matrix.append(vec)
+
+    # If rows are overwhelmingly zero (all-same), supplement with text features
+    non_zero_ratio = sum(
+        1 for vec in matrix[:200] if any(v != 0.0 for v in vec)
+    ) / max(1, min(200, len(matrix)))
+    if non_zero_ratio < 0.05:
+        return extract_text_features(records)
+
+    return feature_names, matrix
+
+
+# ── Text / unstructured feature extraction ─────────────────────────────────
+
+_RE_IP = re.compile(r'\b(?:\d{1,3}\.){3}\d{1,3}\b')
+_RE_PORT = re.compile(r'(?:port\s+|:)(\d{1,5})\b', re.IGNORECASE)
+_RE_TS_HOUR = re.compile(r'\b(\d{1,2}):\d{2}:\d{2}\b')
+_KW_ERROR = re.compile(r'\b(error|exception|critical|fatal|panic|traceback)\b', re.IGNORECASE)
+_KW_WARN = re.compile(r'\b(warn|warning|alert|notice)\b', re.IGNORECASE)
+_KW_FAIL = re.compile(r'\b(fail|failed|failure|denied|reject|refused|unauthorized|forbidden|blocked|drop|invalid|bad)\b', re.IGNORECASE)
+_KW_AUTH = re.compile(r'\b(login|logout|auth|authentication|password|credential|ssh|sudo|su |access)\b', re.IGNORECASE)
+_KW_NET = re.compile(r'\b(connect|disconnect|timeout|syn|ack|rst|fin|icmp|udp|tcp|http|https|dns|smtp|ftp)\b', re.IGNORECASE)
+_KW_SCAN = re.compile(r'\b(scan|probe|brute|flood|dos|ddos|exploit|payload|inject|overflow|xss|sqli)\b', re.IGNORECASE)
+
+
+def extract_text_features(records: List[Dict[str, Any]]) -> Tuple[List[str], List[List[float]]]:
+    """Derive numeric features from raw text/syslog lines.
+
+    Used when structured numeric columns are not available.
+    Features extracted:
+    - msg_length, word_count, digit_count, special_char_count
+    - uppercase_ratio, digit_ratio
+    - hour (from HH:MM:SS timestamp, -1 if absent)
+    - ip_count, port_count
+    - severity_score: error=4, warn=3, fail=2, auth=1, net=1
+    - error_score, warn_score, fail_score, auth_score, net_score, scan_score
+    """
+    feature_names = [
+        "msg_length", "word_count", "digit_count", "special_char_count",
+        "uppercase_ratio", "digit_ratio", "hour",
+        "ip_count", "port_count",
+        "error_score", "warn_score", "fail_score",
+        "auth_score", "net_score", "scan_score",
+    ]
+    matrix: List[List[float]] = []
+
+    for row in records:
+        raw: str = str(row.get("raw", "") or row.get("message", "") or "")
+
+        msg_length = float(len(raw))
+        words = raw.split()
+        word_count = float(len(words))
+        digit_count = float(sum(c.isdigit() for c in raw))
+        alpha_count = sum(c.isalpha() for c in raw)
+        special_char_count = float(sum(not c.isalnum() and not c.isspace() for c in raw))
+        uppercase_ratio = float(sum(c.isupper() for c in raw)) / max(1.0, float(alpha_count))
+        digit_ratio = digit_count / max(1.0, msg_length)
+
+        hour_m = _RE_TS_HOUR.search(raw)
+        hour = float(int(hour_m.group(1))) if hour_m else -1.0
+
+        ip_count = float(len(_RE_IP.findall(raw)))
+        port_count = float(len(_RE_PORT.findall(raw)))
+
+        error_score = float(len(_KW_ERROR.findall(raw)))
+        warn_score = float(len(_KW_WARN.findall(raw)))
+        fail_score = float(len(_KW_FAIL.findall(raw)))
+        auth_score = float(len(_KW_AUTH.findall(raw)))
+        net_score = float(len(_KW_NET.findall(raw)))
+        scan_score = float(len(_KW_SCAN.findall(raw)))
+
+        matrix.append([
+            msg_length, word_count, digit_count, special_char_count,
+            uppercase_ratio, digit_ratio, hour,
+            ip_count, port_count,
+            error_score, warn_score, fail_score,
+            auth_score, net_score, scan_score,
+        ])
 
     return feature_names, matrix
 
@@ -298,20 +380,21 @@ def run_one_class_svm(
 
 def run_dbscan(
     records: List[Dict[str, Any]],
-    eps: float = 0.5,
-    min_samples: int = 5,
+    eps: float | None = None,
+    min_samples: int | None = None,
 ) -> Dict[str, Any]:
     """Run DBSCAN clustering for outlier/noise detection.
 
     Points not belonging to any cluster (label=-1) are considered outliers.
-    DBSCAN is effective at finding arbitrarily-shaped clusters and flagging
-    sparse outlier points.
-
-    Returns same structure as run_isolation_forest.
+    eps and min_samples are auto-tuned when not provided:
+    - min_samples defaults to max(5, ln(n))
+    - eps is estimated from the 95th percentile of k-NN distances (k=min_samples)
+      on a subsample to avoid O(n^2) cost.
     """
     try:
         from sklearn.cluster import DBSCAN
         from sklearn.preprocessing import StandardScaler
+        from sklearn.neighbors import NearestNeighbors
         import numpy as np
     except ImportError:
         raise ImportError("scikit-learn and numpy are required. pip install scikit-learn numpy")
@@ -328,6 +411,32 @@ def run_dbscan(
     X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(X)
+
+    n = len(X_scaled)
+
+    # Auto-tune min_samples: rule of thumb ln(n), capped to reasonable range
+    if min_samples is None:
+        min_samples = max(5, min(50, int(math.log(max(n, 2)))))
+
+    # Auto-tune eps: use k-NN distances on a subsample (capped at 5000)
+    if eps is None:
+        sample_size = min(n, 5000)
+        rng = getattr(np.random, "default_rng", None)
+        if rng:
+            idx = np.random.default_rng(42).choice(n, sample_size, replace=False)
+        else:
+            np.random.seed(42)
+            idx = np.random.choice(n, sample_size, replace=False)
+        X_sub = X_scaled[idx]
+        k = min(min_samples, sample_size - 1)
+        nn = NearestNeighbors(n_neighbors=k, n_jobs=-1)
+        nn.fit(X_sub)
+        distances, _ = nn.kneighbors(X_sub)
+        k_dists = np.sort(distances[:, -1])
+        # Use 80th percentile of k-distances as eps — balances recall vs noise
+        eps = float(np.percentile(k_dists, 80))
+        # Clamp to a sensible range
+        eps = max(0.3, min(eps, 5.0))
 
     clf = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=-1)
     labels = clf.fit_predict(X_scaled)
@@ -382,6 +491,8 @@ def run_dbscan(
         "anomaly_records": anomaly_records[:100],
         "method": "DBSCAN",
         "n_clusters": n_clusters,
+        "eps": round(eps, 4),
+        "min_samples": min_samples,
     }
 
 

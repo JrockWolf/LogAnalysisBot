@@ -225,6 +225,18 @@ async def analyze(
     # Detect file type
     file_type = detect_file_type(path)
 
+    # Determine row cap based on file size — reservoir-sample large files so
+    # memory stays bounded and ML models run in reasonable time.
+    _file_size = path.stat().st_size
+    if _file_size > 200 * 1024 * 1024:   # >200 MB
+        _max_rows = 50_000
+    elif _file_size > 50 * 1024 * 1024:  # >50 MB
+        _max_rows = 100_000
+    elif _file_size > 10 * 1024 * 1024:  # >10 MB
+        _max_rows = 200_000
+    else:
+        _max_rows = None  # read everything
+
     # Perplexity key fixup
     try:
         openai_key = os.getenv("OPENAI_API_KEY")
@@ -267,8 +279,8 @@ async def analyze(
     # MITRE enrichment
     mitre_mappings = enrich_findings_with_mitre(findings)
 
-    # Parse records for pipeline
-    records = parse_log(path)
+    # Parse records for pipeline (reservoir-sampled for large files)
+    records = parse_log(path, max_rows=_max_rows)
 
     # Dataset overview
     ds_overview = dataset_overview(records)
@@ -279,7 +291,7 @@ async def analyze(
     if is_labeled_dataset_csv(path):
         try:
             from .dataset_loader import load_dataset_csv, dataset_summary as ds_summary
-            _, ds_rows = load_dataset_csv(path, max_rows=10000)
+            _, ds_rows = load_dataset_csv(path, max_rows=_max_rows or 50_000)
             dataset_summary_data = ds_summary(ds_rows)
         except Exception:
             pass
@@ -373,7 +385,19 @@ async def visualize(
             path = Path(tf.name)
 
     file_type = detect_file_type(path)
-    records = parse_log(path)
+
+    # Size-based row cap for visualize route
+    _vis_size = path.stat().st_size
+    if _vis_size > 200 * 1024 * 1024:
+        _vis_max = 50_000
+    elif _vis_size > 50 * 1024 * 1024:
+        _vis_max = 100_000
+    elif _vis_size > 10 * 1024 * 1024:
+        _vis_max = 200_000
+    else:
+        _vis_max = None
+
+    records = parse_log(path, max_rows=_vis_max)
 
     # Dataset overview
     ds_overview = dataset_overview(records)
@@ -384,7 +408,7 @@ async def visualize(
     if is_labeled_dataset_csv(path):
         try:
             from .dataset_loader import load_dataset_csv, dataset_summary as ds_summary
-            _, ds_rows = load_dataset_csv(path, max_rows=10000)
+            _, ds_rows = load_dataset_csv(path, max_rows=_vis_max or 50_000)
             dataset_summary_data = ds_summary(ds_rows)
         except Exception:
             pass

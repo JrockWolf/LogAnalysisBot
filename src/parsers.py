@@ -10,62 +10,93 @@ Supported formats:
 from typing import List, Dict, Any
 import csv
 import json
+import random
 from pathlib import Path
+
+
+# ---------------------------------------------------------------------------
+# Reservoir sampling helper
+# ---------------------------------------------------------------------------
+
+def _reservoir_sample(stream, k: int) -> list:
+    """Uniform reservoir sample of at most k items from an iterable."""
+    result = []
+    for i, item in enumerate(stream):
+        if i < k:
+            result.append(item)
+        else:
+            j = random.randint(0, i)
+            if j < k:
+                result[j] = item
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Text / Syslog
 # ---------------------------------------------------------------------------
 
-def parse_text_log(path: Path) -> List[Dict[str, Any]]:
-    """Line-by-line text parser: returns one record per line with raw message."""
-    records: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        for lineno, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            records.append({"line": lineno, "raw": line, "type": "text"})
-    return records
+def parse_text_log(path: Path, max_rows: int | None = None) -> List[Dict[str, Any]]:
+    """Line-by-line text parser: returns one record per line with raw message.
+
+    If max_rows is set and the file has more lines, a uniform reservoir sample
+    of max_rows records is returned so large files don't overwhelm memory.
+    """
+    def _gen():
+        with path.open("r", encoding="utf-8", errors="ignore") as f:
+            for lineno, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                yield {"line": lineno, "raw": line, "type": "text"}
+
+    if max_rows is None:
+        return list(_gen())
+    return _reservoir_sample(_gen(), max_rows)
 
 
 # ---------------------------------------------------------------------------
 # JSON / JSONL
 # ---------------------------------------------------------------------------
 
-def parse_json_log(path: Path) -> List[Dict[str, Any]]:
-    records: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        for lineno, line in enumerate(f, start=1):
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(obj, dict):
-                obj.setdefault("_line", lineno)
-                obj.setdefault("type", "json")
-                records.append(obj)
-            else:
-                records.append({"_line": lineno, "value": obj, "type": "json"})
-    return records
+def parse_json_log(path: Path, max_rows: int | None = None) -> List[Dict[str, Any]]:
+    def _gen():
+        with path.open("r", encoding="utf-8", errors="ignore") as f:
+            for lineno, line in enumerate(f, start=1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    obj = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict):
+                    obj.setdefault("_line", lineno)
+                    obj.setdefault("type", "json")
+                    yield obj
+                else:
+                    yield {"_line": lineno, "value": obj, "type": "json"}
+
+    if max_rows is None:
+        return list(_gen())
+    return _reservoir_sample(_gen(), max_rows)
 
 
 # ---------------------------------------------------------------------------
 # CSV (generic)
 # ---------------------------------------------------------------------------
 
-def parse_csv_log(path: Path) -> List[Dict[str, Any]]:
-    records: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        reader = csv.DictReader(f)
-        for lineno, row in enumerate(reader, start=1):
-            row["_line"] = lineno
-            row["type"] = "csv"
-            records.append(dict(row))
-    return records
+def parse_csv_log(path: Path, max_rows: int | None = None) -> List[Dict[str, Any]]:
+    def _gen():
+        with path.open("r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            for lineno, row in enumerate(reader, start=1):
+                row["_line"] = lineno
+                row["type"] = "csv"
+                yield dict(row)
+
+    if max_rows is None:
+        return list(_gen())
+    return _reservoir_sample(_gen(), max_rows)
 
 
 # ---------------------------------------------------------------------------
@@ -85,37 +116,41 @@ def is_labeled_dataset_csv(path: Path) -> bool:
 is_cicids_csv = is_labeled_dataset_csv
 
 
-def parse_dataset_csv(path: Path) -> List[Dict[str, Any]]:
+def parse_dataset_csv(path: Path, max_rows: int | None = None) -> List[Dict[str, Any]]:
     """Parse a labeled dataset CSV and produce records with a *raw* key for the analyzer."""
     from .dataset_loader import normalize_label
-    records: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8", errors="ignore") as f:
-        reader = csv.DictReader(f)
-        headers = [h.strip() for h in (reader.fieldnames or [])]
-        reader.fieldnames = headers
-        for lineno, row in enumerate(reader, start=1):
-            stripped = {k.strip(): v.strip() for k, v in row.items() if k}
-            label = stripped.get("Label", "UNKNOWN")
-            category = normalize_label(label)
-            dst_port = stripped.get("Destination Port", "?")
-            fwd_pkts = stripped.get("Total Fwd Packets", "?")
-            bwd_pkts = stripped.get("Total Backward Packets", "?")
-            flow_bps = stripped.get("Flow Bytes/s", "?")
-            syn = stripped.get("SYN Flag Count", "0")
-            raw = (
-                f"Flow: dst_port={dst_port} fwd_pkts={fwd_pkts} bwd_pkts={bwd_pkts} "
-                f"flow_bytes_s={flow_bps} syn_flags={syn} label={label}"
-            )
-            record: Dict[str, Any] = {
-                "_line": lineno,
-                "raw": raw,
-                "type": "dataset",
-                "_label": label,
-                "_category": category,
-            }
-            record.update(stripped)
-            records.append(record)
-    return records
+
+    def _gen():
+        with path.open("r", encoding="utf-8", errors="ignore") as f:
+            reader = csv.DictReader(f)
+            headers = [h.strip() for h in (reader.fieldnames or [])]
+            reader.fieldnames = headers
+            for lineno, row in enumerate(reader, start=1):
+                stripped = {k.strip(): v.strip() for k, v in row.items() if k}
+                label = stripped.get("Label", "UNKNOWN")
+                category = normalize_label(label)
+                dst_port = stripped.get("Destination Port", "?")
+                fwd_pkts = stripped.get("Total Fwd Packets", "?")
+                bwd_pkts = stripped.get("Total Backward Packets", "?")
+                flow_bps = stripped.get("Flow Bytes/s", "?")
+                syn = stripped.get("SYN Flag Count", "0")
+                raw = (
+                    f"Flow: dst_port={dst_port} fwd_pkts={fwd_pkts} bwd_pkts={bwd_pkts} "
+                    f"flow_bytes_s={flow_bps} syn_flags={syn} label={label}"
+                )
+                record: Dict[str, Any] = {
+                    "_line": lineno,
+                    "raw": raw,
+                    "type": "dataset",
+                    "_label": label,
+                    "_category": category,
+                }
+                record.update(stripped)
+                yield record
+
+    if max_rows is None:
+        return list(_gen())
+    return _reservoir_sample(_gen(), max_rows)
 
 # Backward-compatible alias
 parse_cicids_csv = parse_dataset_csv
@@ -229,18 +264,31 @@ def detect_file_type(path: Path) -> str:
         if is_labeled_dataset_csv(path):
             return "dataset"
         return "csv"
+    # Check if a .log/.txt file is actually JSON lines
+    if suf in (".log", ".txt", ""):
+        try:
+            with path.open("r", encoding="utf-8", errors="ignore") as f:
+                first = f.readline().strip()
+                if first.startswith("{") and json.loads(first):
+                    return "json"
+        except Exception:
+            pass
     return "text"
 
 
-def parse_log(path: Path) -> List[Dict[str, Any]]:
-    """Auto-detect format and parse the file."""
+def parse_log(path: Path, max_rows: int | None = None) -> List[Dict[str, Any]]:
+    """Auto-detect format and parse the file.
+
+    max_rows: if set, reservoir-sample the file down to this many records so
+    that large files (e.g. 600 MB) don't exhaust memory.
+    """
     ftype = detect_file_type(path)
     if ftype == "pcap":
-        return parse_pcap(path)
+        return parse_pcap(path, max_packets=max_rows or 50_000)
     if ftype == "json":
-        return parse_json_log(path)
+        return parse_json_log(path, max_rows=max_rows)
     if ftype == "dataset":
-        return parse_dataset_csv(path)
+        return parse_dataset_csv(path, max_rows=max_rows)
     if ftype == "csv":
-        return parse_csv_log(path)
-    return parse_text_log(path)
+        return parse_csv_log(path, max_rows=max_rows)
+    return parse_text_log(path, max_rows=max_rows)
