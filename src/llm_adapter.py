@@ -140,8 +140,21 @@ class LLMAdapter:
         )
         if not key:
             raise RuntimeError("GEMINI_API_KEY not set")
-        raw_model = self.model_overrides.get("gemini") or os.getenv("GEMINI_MODEL", "models/gemini-flash-latest")
+        raw_model = self.model_overrides.get("gemini") or os.getenv("GEMINI_MODEL", "models/gemini-2.0-flash")
         raw_model = raw_model.strip()
+        # Warn early if the model name looks invalid (common user mistake)
+        _known_gemini = {
+            "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-flash",
+            "gemini-1.5-flash", "gemini-1.5-flash-8b", "gemini-1.5-pro",
+            "gemini-2.5-pro", "gemini-pro", "gemini-pro-vision",
+            "gemini-flash-latest", "gemini-pro-latest",
+        }
+        _bare = raw_model.split("/", 1)[-1].lower()
+        if _bare not in _known_gemini and not os.getenv("GEMINI_MODEL"):
+            logger.warning(
+                "Gemini model '%s' may not exist. Known models: %s",
+                raw_model, ", ".join(sorted(_known_gemini)),
+            )
         http_model = raw_model if raw_model.startswith("models/") else f"models/{raw_model}"
         sdk_model = raw_model.split("/", 1)[1] if raw_model.startswith("models/") else raw_model
         base_url = os.getenv("GEMINI_API_URL", "https://generativelanguage.googleapis.com/v1beta").rstrip("/")
@@ -368,6 +381,19 @@ class LLMAdapter:
                 return ""
             except Exception as e:
                 logger.exception("Gemini SDK call failed: %s", e)
+                err_str = str(e)
+                # Raise user-friendly errors directly instead of falling through
+                if "quota" in err_str.lower() or "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+                    raise RuntimeError(
+                        "Gemini API quota exceeded. You may have hit the free-tier limit. "
+                        "Wait a minute and retry, or switch to a different model/provider."
+                    ) from e
+                if "not found" in err_str.lower() or "404" in err_str:
+                    raise RuntimeError(
+                        f"Gemini model '{sdk_model}' not found. "
+                        "Valid models: gemini-2.0-flash, gemini-2.0-flash-lite, "
+                        "gemini-1.5-flash, gemini-1.5-pro, gemini-2.5-pro."
+                    ) from e
                 # fall through to HTTP fallback if possible
                 if "requests" not in info:
                     try:
@@ -406,12 +432,21 @@ class LLMAdapter:
                     info["base_url"] = alt_base
                     return _post(alt_base)
                 if status == 404:
-                    message = "Gemini model not found. Set GEMINI_MODEL (e.g. 'gemini-pro-latest') or update GEMINI_API_URL."
+                    message = (
+                        f"Gemini model '{model}' not found. "
+                        "Valid models: gemini-2.0-flash, gemini-2.0-flash-lite, "
+                        "gemini-1.5-flash, gemini-1.5-pro, gemini-2.5-pro."
+                    )
+                elif status == 429:
+                    message = (
+                        "Gemini API quota exceeded (free-tier limit reached). "
+                        "Wait a minute and retry, or upgrade your Google AI plan."
+                    )
                 elif status == 403:
                     message = "Gemini API access denied. Ensure the key has Generative Language API enabled."
                 else:
                     message = "Gemini API request failed"
-                if extra_message:
+                if extra_message and status not in (404, 429):
                     message += f" Details: {extra_message}"
                 raise RuntimeError(message) from http_err
             try:
