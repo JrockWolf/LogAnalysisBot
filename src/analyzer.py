@@ -408,10 +408,9 @@ def analyze_logs_with_llm(
                 key_map[inferred] = key_value
 
     raw_model_hint = (model or "").strip()
-    model_hint = raw_model_hint if selected_provider == "gemini" else ""
     model_map: Dict[str, str] = {}
-    if model_hint:
-        model_map["gemini"] = model_hint
+    if raw_model_hint and selected_provider and selected_provider != "auto":
+        model_map[selected_provider] = raw_model_hint
 
     llm = LLMAdapter(provider=selected_provider, api_keys=key_map, model_overrides=model_map)
     prompt = """Analyze these security log entries and provide findings with solutions.

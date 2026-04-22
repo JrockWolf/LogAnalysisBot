@@ -107,9 +107,11 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
-              <label class="meta" for="model-upload">Gemini Model</label>
-              <input type="text" name="model" id="model-upload" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            <div class="form-field model-field {% if selected_provider in ('auto', '') %}hidden{% endif %}" id="model-field-upload">
+              <label class="meta" for="model-upload">Model</label>
+              <select name="model" id="model-upload" {% if selected_provider in ('auto', '') %}disabled{% endif %}>
+                <option value="">(default)</option>
+              </select>
             </div>
             <div class="form-field">
               <label class="meta" for="api-key-upload">API Key</label>
@@ -135,9 +137,11 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="form-field model-field {% if selected_provider != 'gemini' %}hidden{% endif %}">
-              <label class="meta" for="model-paste">Gemini Model</label>
-              <input type="text" name="model" id="model-paste" placeholder="e.g. models/gemini-2.0-flash-001" value="{{ selected_model }}" autocomplete="off" {% if selected_provider != 'gemini' %}disabled{% endif %} />
+            <div class="form-field model-field {% if selected_provider in ('auto', '') %}hidden{% endif %}" id="model-field-paste">
+              <label class="meta" for="model-paste">Model</label>
+              <select name="model" id="model-paste" {% if selected_provider in ('auto', '') %}disabled{% endif %}>
+                <option value="">(default)</option>
+              </select>
             </div>
             <div class="form-field">
               <label class="meta" for="api-key-paste">API Key</label>
@@ -177,7 +181,7 @@
               <span class="toggle-label">Generate AI readable summary</span>
             </label>
             <div id="vizSummaryOpts" class="ai-summary-opts hidden">
-              <select name="provider" class="form-input">
+              <select name="provider" id="viz-provider-upload" class="form-input">
                 <option value="auto">Auto-detect provider</option>
                 <option value="openai">OpenAI</option>
                 <option value="perplexity">Perplexity</option>
@@ -185,7 +189,12 @@
                 <option value="deepseek">DeepSeek</option>
                 <option value="transformers">Local (no key required)</option>
               </select>
-              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" />
+              <div class="form-field model-field hidden" id="viz-model-field-upload" style="margin-top:8px;">
+                <select name="model" id="viz-model-upload" class="form-input" disabled>
+                  <option value="">(default)</option>
+                </select>
+              </div>
+              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" style="margin-top:8px;" />
             </div>
 
             <div class="actions">
@@ -206,7 +215,7 @@
               <span class="toggle-label">Generate AI readable summary</span>
             </label>
             <div id="vizPasteSummaryOpts" class="ai-summary-opts hidden">
-              <select name="provider" class="form-input">
+              <select name="provider" id="viz-provider-paste" class="form-input">
                 <option value="auto">Auto-detect provider</option>
                 <option value="openai">OpenAI</option>
                 <option value="perplexity">Perplexity</option>
@@ -214,7 +223,12 @@
                 <option value="deepseek">DeepSeek</option>
                 <option value="transformers">Local (no key required)</option>
               </select>
-              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" />
+              <div class="form-field model-field hidden" id="viz-model-field-paste" style="margin-top:8px;">
+                <select name="model" id="viz-model-paste" class="form-input" disabled>
+                  <option value="">(default)</option>
+                </select>
+              </div>
+              <input type="text" name="api_key" class="form-input" placeholder="API key (optional if set in environment)" autocomplete="off" style="margin-top:8px;" />
             </div>
 
             <div class="actions">
@@ -260,6 +274,48 @@
   </div>
 
   <script>
+    // ── Provider → model map injected from server ──────────────────────────
+    const PROVIDER_MODELS = {{ provider_models_json | safe }};
+    const SELECTED_PROVIDER = "{{ selected_provider }}";
+    const SELECTED_MODEL = "{{ selected_model }}";
+
+    // Populate a model <select> for the given provider value
+    function populateModelSelect(selectEl, provider) {
+      const models = PROVIDER_MODELS[provider] || [];
+      // Clear existing options
+      selectEl.innerHTML = '<option value="">(default — let provider decide)</option>';
+      models.forEach(function(m) {
+        const opt = document.createElement('option');
+        opt.value = m[0];
+        opt.textContent = m[1];
+        // Re-select previously chosen model
+        if (m[0] === SELECTED_MODEL) opt.selected = true;
+        selectEl.appendChild(opt);
+      });
+    }
+
+    // Show/hide the model row and populate models for the given provider
+    function updateModelField(fieldId, selectId, provider) {
+      const field = document.getElementById(fieldId);
+      const sel = document.getElementById(selectId);
+      if (!field || !sel) return;
+      const hasModels = provider && provider !== 'auto' && (PROVIDER_MODELS[provider] || []).length > 0;
+      if (hasModels) {
+        populateModelSelect(sel, provider);
+        field.classList.remove('hidden');
+        sel.disabled = false;
+      } else {
+        field.classList.add('hidden');
+        sel.disabled = true;
+      }
+    }
+
+    // Sync all main analyze provider+model selects together
+    function syncAnalyzeProvider(val) {
+      // Update model fields for both analyze forms
+      updateModelField('model-field-upload', 'model-upload', val);
+      updateModelField('model-field-paste', 'model-paste', val);
+    }
     // Tab switching via event delegation
     (function() {
       var tabContainer = document.getElementById('mainTabs');
@@ -281,11 +337,11 @@
     })();
 
     // Drop zone handling
-    function setupDropZone(zoneId, inputId, displayId, formId) {
+    function setupDropZone(zoneId, inputId, displayId) {
       const zone = document.getElementById(zoneId);
       const input = document.getElementById(inputId);
       const display = document.getElementById(displayId);
-
+      if (!zone || !input) return;
       zone.addEventListener('click', () => input.click());
       zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
       zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
@@ -310,8 +366,8 @@
       }
     }
 
-    setupDropZone('dropZone', 'upload', 'selectedFile', 'uploadForm');
-    setupDropZone('vizDropZone', 'vizUpload', 'vizSelectedFile', 'vizUploadForm');
+    setupDropZone('dropZone', 'upload', 'selectedFile');
+    setupDropZone('vizDropZone', 'vizUpload', 'vizSelectedFile');
 
     // Global drag & drop
     window.addEventListener('dragover', e => e.preventDefault());
@@ -319,45 +375,46 @@
       e.preventDefault();
       if (!e.dataTransfer.files?.length) return;
       const activeTab = document.querySelector('.tab-content.active');
-      const input = activeTab.querySelector('input[type=file]');
+      const input = activeTab?.querySelector('input[type=file]');
       const form = input?.closest('form');
       if (input && form) { input.files = e.dataTransfer.files; form.submit(); }
     });
 
-    // Provider sync
-    const providerSelectors = document.querySelectorAll('select[name="provider"]');
-    providerSelectors.forEach(sel => {
-      sel.addEventListener('change', () => {
-        providerSelectors.forEach(o => { if (o !== sel) o.value = sel.value; });
-        updateModelVisibility(sel.value);
+    // ── Analyze tab: provider selects (upload + paste share state) ──────────
+    const analyzeProviders = [
+      document.getElementById('provider-upload'),
+      document.getElementById('provider-paste'),
+    ].filter(Boolean);
+
+    analyzeProviders.forEach(sel => {
+      sel.addEventListener('change', function() {
+        const val = this.value;
+        // Keep both selects in sync
+        analyzeProviders.forEach(o => { if (o !== sel) o.value = val; });
+        syncAnalyzeProvider(val);
       });
     });
 
-    const keyInputs = document.querySelectorAll('input[name="api_key"]');
-    keyInputs.forEach(input => {
-      input.addEventListener('input', () => {
-        keyInputs.forEach(o => { if (o !== input) o.value = input.value; });
+    // API key sync across analyze forms
+    document.querySelectorAll('#uploadForm input[name="api_key"], #pasteForm input[name="api_key"]').forEach(inp => {
+      inp.addEventListener('input', function() {
+        document.querySelectorAll('input[name="api_key"]').forEach(o => {
+          if (o !== inp) o.value = inp.value;
+        });
       });
     });
 
-    const modelInputs = document.querySelectorAll('input[name="model"]');
-    const modelGroups = document.querySelectorAll('.model-field');
-    modelInputs.forEach(input => {
-      input.addEventListener('input', () => {
-        modelInputs.forEach(o => { if (o !== input) o.value = input.value; });
-      });
-    });
-
-    function updateModelVisibility(val) {
-      const show = (val || '').toLowerCase() === 'gemini';
-      modelGroups.forEach(g => {
-        const inp = g.querySelector('input[name="model"]');
-        if (show) { g.classList.remove('hidden'); if (inp) inp.disabled = false; }
-        else { g.classList.add('hidden'); if (inp) inp.disabled = true; }
+    // ── Visualize tab: provider selects in AI summary panels ────────────────
+    function setupVizProviderSelect(provSelId, modelFieldId, modelSelId) {
+      const provSel = document.getElementById(provSelId);
+      if (!provSel) return;
+      provSel.addEventListener('change', function() {
+        updateModelField(modelFieldId, modelSelId, this.value);
       });
     }
 
-    if (providerSelectors.length) updateModelVisibility(providerSelectors[0].value);
+    setupVizProviderSelect('viz-provider-upload', 'viz-model-field-upload', 'viz-model-upload');
+    setupVizProviderSelect('viz-provider-paste',  'viz-model-field-paste',  'viz-model-paste');
 
     // AI summary toggle for visualize forms
     function toggleVizSummary(optsId) {
@@ -365,6 +422,9 @@
       if (!opts) return;
       opts.classList.toggle('hidden');
     }
+
+    // ── Init: populate model dropdowns for current server-side selection ────
+    syncAnalyzeProvider(SELECTED_PROVIDER);
   </script>
 </body>
 </html>

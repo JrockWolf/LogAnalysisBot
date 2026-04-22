@@ -27,6 +27,48 @@ SUPPORTED_PROVIDERS = [
 
 PROVIDER_LABELS = {value: label for value, label in SUPPORTED_PROVIDERS}
 
+# Available models per provider — shown in the UI model selector
+PROVIDER_MODELS: dict[str, list[tuple[str, str]]] = {
+    "openai": [
+        ("gpt-4o", "GPT-4o"),
+        ("gpt-4o-mini", "GPT-4o mini"),
+        ("gpt-4-turbo", "GPT-4 Turbo"),
+        ("gpt-4", "GPT-4"),
+        ("gpt-3.5-turbo", "GPT-3.5 Turbo"),
+        ("o1", "o1 (reasoning)"),
+        ("o1-mini", "o1 mini (reasoning)"),
+        ("o3-mini", "o3 mini (reasoning)"),
+    ],
+    "perplexity": [
+        ("sonar-pro", "Sonar Pro"),
+        ("sonar", "Sonar"),
+        ("sonar-reasoning", "Sonar Reasoning"),
+        ("sonar-reasoning-pro", "Sonar Reasoning Pro"),
+        ("sonar-deep-research", "Sonar Deep Research"),
+    ],
+    "gemini": [
+        ("gemini-2.0-flash", "Gemini 2.0 Flash (default)"),
+        ("gemini-2.0-flash-lite", "Gemini 2.0 Flash Lite"),
+        ("gemini-2.5-flash", "Gemini 2.5 Flash"),
+        ("gemini-2.5-pro", "Gemini 2.5 Pro"),
+        ("gemini-1.5-flash", "Gemini 1.5 Flash"),
+        ("gemini-1.5-flash-8b", "Gemini 1.5 Flash 8B"),
+        ("gemini-1.5-pro", "Gemini 1.5 Pro"),
+    ],
+    "deepseek": [
+        ("deepseek-chat", "DeepSeek Chat (V3)"),
+        ("deepseek-reasoner", "DeepSeek Reasoner (R1)"),
+        ("deepseek-coder", "DeepSeek Coder"),
+    ],
+    "transformers": [
+        ("gpt2", "GPT-2 (default, fast)"),
+        ("distilgpt2", "DistilGPT-2 (faster)"),
+        ("facebook/opt-125m", "OPT-125M"),
+        ("microsoft/DialoGPT-small", "DialoGPT Small"),
+        ("EleutherAI/gpt-neo-125m", "GPT-Neo 125M"),
+    ],
+}
+
 
 def _provider_display(value: str | None) -> str:
     if not value:
@@ -148,8 +190,8 @@ def index(request: Request, provider: str | None = None, model: str | None = Non
     selected = (provider or "auto").strip().lower() or "auto"
     if selected not in PROVIDER_LABELS:
         selected = "auto"
-    raw_model_pref = (model or "").strip()
-    model_pref = raw_model_pref if selected == "gemini" else ""
+    model_pref = (model or "").strip()
+    import json as _json
     return templates.TemplateResponse(
         request,
         "index.html",
@@ -158,6 +200,9 @@ def index(request: Request, provider: str | None = None, model: str | None = Non
             "providers": SUPPORTED_PROVIDERS,
             "selected_provider": selected,
             "selected_model": model_pref,
+            "provider_models_json": _json.dumps({
+                k: [list(t) for t in v] for k, v in PROVIDER_MODELS.items()
+            }),
         },
     )
 
@@ -179,22 +224,27 @@ async def analyze(
     model_hint = (model or "").strip()
 
     if selected_provider == "gemini" and not provided_key:
+        import json as _json
         return templates.TemplateResponse(request, "index.html", context={
             "error": "Gemini requires an API key.",
             "providers": SUPPORTED_PROVIDERS,
             "selected_provider": selected_provider,
             "selected_model": model_hint,
+            "provider_models_json": _json.dumps({
+                k: [list(t) for t in v] for k, v in PROVIDER_MODELS.items()
+            }),
         })
 
-    if selected_provider != "gemini":
-        model_hint = ""
-
     if (not upload or not upload.filename) and not pasted.strip():
+        import json as _json
         return templates.TemplateResponse(request, "index.html", context={
             "error": "Please provide data by uploading a file or pasting text.",
             "providers": SUPPORTED_PROVIDERS,
             "selected_provider": selected_provider,
             "selected_model": model_hint,
+            "provider_models_json": _json.dumps({
+                k: [list(t) for t in v] for k, v in PROVIDER_MODELS.items()
+            }),
         })
 
     decode_warning = None
@@ -358,12 +408,15 @@ async def visualize(
     model: str = Form(""),
 ):
     """Generate charts, statistical analysis and an optional AI-readable summary."""
+    import json as _json
+    _pmjson = _json.dumps({k: [list(t) for t in v] for k, v in PROVIDER_MODELS.items()})
     if (not upload or not upload.filename) and not pasted.strip():
         return templates.TemplateResponse(request, "index.html", context={
             "error": "Please provide data for visualization.",
             "providers": SUPPORTED_PROVIDERS,
             "selected_provider": "auto",
             "selected_model": "",
+            "provider_models_json": _pmjson,
         })
 
     decode_warning = None
