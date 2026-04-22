@@ -316,30 +316,28 @@ class LLMAdapter:
             except Exception as e:
                 logger.exception("Perplexity SDK call failed: %s", e)
                 raise
-        # HTTP fallback (conservative)
+        # HTTP fallback — Perplexity uses an OpenAI-compatible Chat Completions endpoint
         requests = info["requests"]
         key = info["key"]
-        url = os.getenv("PERPLEXITY_API_URL", "https://api.perplexity.ai/chat")
+        url = os.getenv("PERPLEXITY_API_URL", "https://api.perplexity.ai/chat/completions")
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
         model_name = self.model_overrides.get("perplexity") or os.getenv("PERPLEXITY_MODEL") or "sonar-pro"
         self.active_model = model_name
-        payload = {"query": prompt, "top_n": 1, "model": model_name}
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+        }
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=(5, 25))
             resp.raise_for_status()
             data = resp.json()
-            # try best-effort extraction
             if isinstance(data, dict):
-                # common shapes: {'answer': '...'} or {'response': '...'} or {'data': {'text': '...'}}
-                for k in ("answer", "response", "text"):
-                    if k in data and isinstance(data[k], str):
-                        return data[k].strip()
-                # nested
-                d = data.get("data") or data.get("result")
-                if isinstance(d, dict):
-                    for k in ("answer", "response", "text"):
-                        if k in d and isinstance(d[k], str):
-                            return d[k].strip()
+                choices = data.get("choices")
+                if choices and isinstance(choices, list):
+                    msg = choices[0].get("message", {})
+                    content = msg.get("content") if isinstance(msg, dict) else None
+                    if content:
+                        return content.strip()
             # fallback to raw text
             return resp.text.strip()
         except Exception as e:
@@ -486,22 +484,28 @@ class LLMAdapter:
             raise RuntimeError("Deepseek client not initialized")
         requests = info["requests"]
         key = info["key"]
-        url = os.getenv("DEEPLSEEK_API_URL", "https://api.deepseek.ai/v1/generate")
+        # DeepSeek uses an OpenAI-compatible Chat Completions endpoint
+        url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+        model_name = self.model_overrides.get("deepseek") or os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+        self.active_model = model_name
         headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
-        payload = {"input": prompt, "max_tokens": max_tokens}
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": max_tokens,
+            "temperature": 0,
+        }
         try:
             resp = requests.post(url, json=payload, headers=headers, timeout=(5, 25))
             resp.raise_for_status()
             data = resp.json()
             if isinstance(data, dict):
-                for k in ("answer", "text", "response", "output"):
-                    if k in data and isinstance(data[k], str):
-                        return data[k].strip()
-                d = data.get("data") or data.get("result")
-                if isinstance(d, dict):
-                    for k in ("answer", "text", "response", "output"):
-                        if k in d and isinstance(d[k], str):
-                            return d[k].strip()
+                choices = data.get("choices")
+                if choices and isinstance(choices, list):
+                    msg = choices[0].get("message", {})
+                    content = msg.get("content") if isinstance(msg, dict) else None
+                    if content:
+                        return content.strip()
             return resp.text.strip()
         except Exception as e:
             logger.exception("Deepseek API call failed: %s", e)
@@ -696,7 +700,7 @@ class LLMAdapter:
         Allows callers (e.g. FastAPI async route handlers) to await the LLM
         call without blocking the event loop.
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         try:
             result = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: self.generate(prompt, max_tokens)),
