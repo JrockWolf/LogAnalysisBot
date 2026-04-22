@@ -656,6 +656,9 @@ def run_all_models(
     """
     results: Dict[str, Any] = {}
 
+    _n = len(records)
+    _err_base = {"anomaly_count": 0, "anomaly_indices": [], "total_records": _n, "feature_names": []}
+
     for model_name, runner in [
         ("isolation_forest", lambda: run_isolation_forest(records, contamination)),
         ("local_outlier_factor", lambda: run_local_outlier_factor(records, contamination)),
@@ -664,15 +667,15 @@ def run_all_models(
         try:
             results[model_name] = runner()
         except Exception as e:
-            results[model_name] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+            results[model_name] = {**_err_base, "error": str(e)}
 
     # One-Class SVM only for smaller datasets (performance constraint)
-    total = len(records)
+    total = _n
     if total <= 5000:
         try:
             results["one_class_svm"] = run_one_class_svm(records, nu=contamination)
         except Exception as e:
-            results["one_class_svm"] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+            results["one_class_svm"] = {**_err_base, "error": str(e)}
 
     # Supervised RF if labels available
     has_labels = any(r.get("_label") for r in records[:50])
@@ -680,7 +683,7 @@ def run_all_models(
         try:
             results["random_forest"] = run_random_forest_supervised(records)
         except Exception as e:
-            results["random_forest"] = {"error": str(e), "anomaly_count": 0, "anomaly_indices": []}
+            results["random_forest"] = {**_err_base, "error": str(e)}
 
     # Ensemble: majority vote across models with valid results
     vote_counts: Dict[int, int] = {}

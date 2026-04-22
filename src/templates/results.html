@@ -168,9 +168,9 @@
           <tr>
             <td><div class="model-name-cell"><span class="model-indicator if"></span>Isolation Forest</div></td>
             <td><span style="font-size:11px;color:var(--muted)">Ensemble / Tree</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
-            <td style="font-size:12px;color:var(--muted)">{{ r.feature_names|length }} features</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
+            <td style="font-size:12px;color:var(--muted)">{{ (r.feature_names | default([]))|length }} features</td>
           </tr>
           {% endif %}
           {% if all_models_result.local_outlier_factor %}
@@ -178,8 +178,8 @@
           <tr>
             <td><div class="model-name-cell"><span class="model-indicator lof"></span>Local Outlier Factor</div></td>
             <td><span style="font-size:11px;color:var(--muted)">Density-based</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
             <td style="font-size:12px;color:var(--muted)">Neighborhood k=20</td>
           </tr>
           {% endif %}
@@ -188,8 +188,8 @@
           <tr>
             <td><div class="model-name-cell"><span class="model-indicator svm"></span>One-Class SVM</div></td>
             <td><span style="font-size:11px;color:var(--muted)">Kernel / Novelty</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
             <td style="font-size:12px;color:var(--muted)">RBF kernel</td>
           </tr>
           {% endif %}
@@ -198,8 +198,8 @@
           <tr>
             <td><div class="model-name-cell"><span class="model-indicator db"></span>DBSCAN</div></td>
             <td><span style="font-size:11px;color:var(--muted)">Clustering</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
             <td style="font-size:12px;color:var(--muted)">{{ r.n_clusters or 0 }} clusters found</td>
           </tr>
           {% endif %}
@@ -208,8 +208,8 @@
           <tr>
             <td><div class="model-name-cell"><span class="model-indicator rf"></span>Random Forest</div></td>
             <td><span style="font-size:11px;color:var(--muted)">Supervised</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
             <td style="font-size:12px;color:var(--muted)">
               {% if r.cv_accuracy %}CV Acc: {{ "%.1f"|format(r.cv_accuracy * 100) }}%{% else %}Labels required{% endif %}
             </td>
@@ -220,8 +220,8 @@
           <tr style="border-top:1px solid rgba(124,58,237,0.2);">
             <td><div class="model-name-cell"><span class="model-indicator ens"></span><strong>Ensemble Consensus</strong></div></td>
             <td><span style="font-size:11px;color:var(--muted)">Majority Vote</span></td>
-            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > r.total_records * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
-            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / (r.total_records or 1) * 100) }}%</td>
+            <td style="text-align:right"><span class="anomaly-count-cell {% if r.anomaly_count > (r.total_records | default(1)) * 0.1 %}high{% elif r.anomaly_count > 0 %}medium{% else %}low{% endif %}">{{ r.anomaly_count }}</span></td>
+            <td style="text-align:right;color:var(--muted-2);font-size:13px">{{ "%.1f"|format(r.anomaly_count / ((r.total_records | default(1)) or 1) * 100) }}%</td>
             <td style="font-size:12px;color:var(--muted)">≥2 models agree</td>
           </tr>
           {% endif %}
