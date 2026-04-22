@@ -93,14 +93,22 @@ _KW_SCAN = re.compile(r'\b(scan|probe|brute|flood|dos|ddos|exploit|payload|injec
 def extract_text_features(records: List[Dict[str, Any]]) -> Tuple[List[str], List[List[float]]]:
     """Derive numeric features from raw text/syslog lines.
 
-    Used when structured numeric columns are not available.
-    Features extracted:
+    When records have already been structurized (have severity_num, src_port,
+    dst_port, status_code, etc.) those values are used directly instead of being
+    derived purely from regex on the raw text, giving the ML models much better
+    signal for anomaly detection.
+
+    Features:
     - msg_length, word_count, digit_count, special_char_count
     - uppercase_ratio, digit_ratio
-    - hour (from HH:MM:SS timestamp, -1 if absent)
+    - hour (from timestamp or HH:MM:SS in raw, -1 if absent)
     - ip_count, port_count
-    - severity_score: error=4, warn=3, fail=2, auth=1, net=1
     - error_score, warn_score, fail_score, auth_score, net_score, scan_score
+    - severity_num  (0=critical … 7=debug; from structured field or keyword)
+    - has_src_ip, has_dst_ip  (binary: structured fields present)
+    - dst_port_wellknown  (1 if dst_port < 1024)
+    - is_http_error  (1 if status_code >= 400)
+    - action_drop  (1 if action is DROP/REJECT/BLOCK)
     """
     feature_names = [
         "msg_length", "word_count", "digit_count", "special_char_count",
@@ -108,6 +116,9 @@ def extract_text_features(records: List[Dict[str, Any]]) -> Tuple[List[str], Lis
         "ip_count", "port_count",
         "error_score", "warn_score", "fail_score",
         "auth_score", "net_score", "scan_score",
+        # Structured bonus features (0 when record is not structurized)
+        "severity_num", "has_src_ip", "has_dst_ip",
+        "dst_port_wellknown", "is_http_error", "action_drop",
     ]
     matrix: List[List[float]] = []
 
@@ -123,11 +134,42 @@ def extract_text_features(records: List[Dict[str, Any]]) -> Tuple[List[str], Lis
         uppercase_ratio = float(sum(c.isupper() for c in raw)) / max(1.0, float(alpha_count))
         digit_ratio = digit_count / max(1.0, msg_length)
 
-        hour_m = _RE_TS_HOUR.search(raw)
-        hour = float(int(hour_m.group(1))) if hour_m else -1.0
+        # Hour: prefer structured timestamp field, fall back to regex on raw
+        hour = -1.0
+        ts = row.get("timestamp")
+        if ts:
+            hour_m = _RE_TS_HOUR.search(str(ts))
+            if hour_m:
+                hour = float(int(hour_m.group(1)))
+        if hour == -1.0:
+            hour_m = _RE_TS_HOUR.search(raw)
+            if hour_m:
+                hour = float(int(hour_m.group(1)))
 
-        ip_count = float(len(_RE_IP.findall(raw)))
-        port_count = float(len(_RE_PORT.findall(raw)))
+        # IPs / ports: prefer structured fields when present
+        has_src_ip = 1.0 if row.get("src_ip") else 0.0
+        has_dst_ip = 1.0 if row.get("dst_ip") else 0.0
+        if has_src_ip or has_dst_ip:
+            ip_count = has_src_ip + has_dst_ip
+        else:
+            ip_count = float(len(_RE_IP.findall(raw)))
+
+        src_port = row.get("src_port")
+        dst_port = row.get("dst_port")
+        if src_port is not None or dst_port is not None:
+            port_count = float((src_port is not None) + (dst_port is not None))
+        else:
+            port_count = float(len(_RE_PORT.findall(raw)))
+
+        dst_port_wellknown = 1.0 if (dst_port is not None and int(dst_port) < 1024) else 0.0
+
+        # Severity: prefer structured severity_num, fall back to keyword counts
+        struct_sev = row.get("severity_num")
+        if struct_sev is not None:
+            # Invert so that critical (0) scores high, debug (7) scores low
+            severity_num = float(7 - int(struct_sev))
+        else:
+            severity_num = 0.0
 
         error_score = float(len(_KW_ERROR.findall(raw)))
         warn_score = float(len(_KW_WARN.findall(raw)))
@@ -136,12 +178,22 @@ def extract_text_features(records: List[Dict[str, Any]]) -> Tuple[List[str], Lis
         net_score = float(len(_KW_NET.findall(raw)))
         scan_score = float(len(_KW_SCAN.findall(raw)))
 
+        # HTTP status anomaly
+        status_code = row.get("status_code")
+        is_http_error = 1.0 if (status_code is not None and int(status_code) >= 400) else 0.0
+
+        # Firewall drop
+        action = str(row.get("action") or "").upper()
+        action_drop = 1.0 if action in ("DROP", "REJECT", "BLOCK", "DRP") else 0.0
+
         matrix.append([
             msg_length, word_count, digit_count, special_char_count,
             uppercase_ratio, digit_ratio, hour,
             ip_count, port_count,
             error_score, warn_score, fail_score,
             auth_score, net_score, scan_score,
+            severity_num, has_src_ip, has_dst_ip,
+            dst_port_wellknown, is_http_error, action_drop,
         ])
 
     return feature_names, matrix

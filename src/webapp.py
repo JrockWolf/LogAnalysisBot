@@ -404,6 +404,40 @@ async def visualize(
 
     records = parse_log(path, max_rows=_vis_max)
 
+    # ── Structurize unstructured records ──────────────────────────────────
+    # Convert raw text/syslog lines into structured records with consistent
+    # fields (timestamp, severity, src_ip, dst_ip, port, protocol, action …).
+    # Already-structured types (pcap, labeled CSV, JSON) are passed through.
+    from .structurizer import structurize_records, structurize_summary
+    is_text_type = file_type in ("text", "log", "syslog", "txt", None) or \
+                   (file_type not in ("pcap", "csv", "json", "jsonl", "dataset"))
+    if is_text_type:
+        records = structurize_records(records)
+    struct_summary = structurize_summary(records)
+
+    # Structured charts (top IPs, severity dist, ports, etc.)
+    from .charts import generate_structured_charts
+    structured_charts: dict = {}
+    if is_text_type and struct_summary.get("structured_pct", 0) > 0:
+        structured_charts = generate_structured_charts(records)
+
+    # Preview: first 200 records showing only populated fields
+    _PREVIEW_FIELDS = [
+        "timestamp", "severity", "hostname", "process",
+        "src_ip", "src_port", "dst_ip", "dst_port",
+        "protocol", "action", "user",
+        "status_code", "method", "url", "bytes_sent", "message",
+    ]
+    # Determine which preview columns actually have data
+    preview_cols = [
+        f for f in _PREVIEW_FIELDS
+        if any(r.get(f) is not None for r in records[:500])
+    ]
+    structured_preview = [
+        {f: r.get(f) for f in preview_cols}
+        for r in records[:200]
+    ]
+
     # Dataset overview
     ds_overview = dataset_overview(records)
 
@@ -542,4 +576,10 @@ Use plain language. Avoid excessive jargon. Format with short paragraphs separat
         "hypotheses": hypotheses,
         "ai_summary": ai_summary,
         "ai_provider_display": ai_provider_display,
+        # Structured data
+        "struct_summary": struct_summary,
+        "structured_preview": structured_preview,
+        "preview_cols": preview_cols,
+        "structured_charts": structured_charts,
+        "is_text_type": is_text_type,
     })

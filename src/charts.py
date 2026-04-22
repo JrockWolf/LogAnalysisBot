@@ -279,6 +279,217 @@ def _error_bar_chart(categories: Dict[str, int], title: str, xlabel: str, color:
     return _fig_to_uri(fig)
 
 
+# ── Structured log charts ──────────────────────────────────────────────────
+
+def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
+    """Generate charts specifically for structurized text/syslog records.
+
+    Produces: top source IPs, severity distribution, protocol distribution,
+    action counts, top destination ports, HTTP status code distribution,
+    hourly activity.
+    Returns a dict of chart_id → base64 PNG data URI.
+    """
+    charts: Dict[str, str] = {}
+    if not records:
+        return charts
+
+    # Collect field data
+    src_ips: Dict[str, int] = {}
+    dst_ips: Dict[str, int] = {}
+    severities: Dict[str, int] = {}
+    protocols: Dict[str, int] = {}
+    actions: Dict[str, int] = {}
+    dst_ports: Dict[int, int] = {}
+    status_codes: Dict[int, int] = {}
+    hours: List[int] = []
+
+    for r in records:
+        if r.get("src_ip"):
+            src_ips[r["src_ip"]] = src_ips.get(r["src_ip"], 0) + 1
+        if r.get("dst_ip"):
+            dst_ips[r["dst_ip"]] = dst_ips.get(r["dst_ip"], 0) + 1
+        sev = r.get("severity") or "unknown"
+        severities[sev] = severities.get(sev, 0) + 1
+        if r.get("protocol"):
+            p = str(r["protocol"]).upper()
+            protocols[p] = protocols.get(p, 0) + 1
+        if r.get("action"):
+            a = str(r["action"]).upper()
+            actions[a] = actions.get(a, 0) + 1
+        dp = r.get("dst_port")
+        if dp is not None:
+            try:
+                dst_ports[int(dp)] = dst_ports.get(int(dp), 0) + 1
+            except (TypeError, ValueError):
+                pass
+        sc = r.get("status_code")
+        if sc is not None:
+            try:
+                status_codes[int(sc)] = status_codes.get(int(sc), 0) + 1
+            except (TypeError, ValueError):
+                pass
+        hr = r.get("hour")
+        if hr is None:
+            ts = r.get("timestamp")
+            if ts:
+                import re as _re
+                hm = _re.search(r"\b(\d{1,2}):\d{2}", str(ts))
+                if hm:
+                    try:
+                        hr = int(hm.group(1))
+                    except ValueError:
+                        pass
+        if hr is not None:
+            try:
+                hours.append(int(hr))
+            except (TypeError, ValueError):
+                pass
+
+    # Top 15 source IPs
+    if src_ips:
+        top = sorted(src_ips.items(), key=lambda x: -x[1])[:15]
+        uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
+                    "Top Source IPs", "Events")
+        if uri:
+            charts["struct_top_src_ips"] = uri
+
+    # Top 10 destination IPs
+    if dst_ips:
+        top = sorted(dst_ips.items(), key=lambda x: -x[1])[:10]
+        uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
+                    "Top Destination IPs", "Events")
+        if uri:
+            charts["struct_top_dst_ips"] = uri
+
+    # Severity distribution
+    _SEV_ORDER = ["emerg", "alert", "crit", "critical", "error",
+                  "warning", "warn", "notice", "info", "debug", "unknown"]
+    if severities:
+        ordered = sorted(severities.items(),
+                         key=lambda x: _SEV_ORDER.index(x[0]) if x[0] in _SEV_ORDER else 99)
+        _SEV_COLORS = {
+            "emerg": "#ef4444", "alert": "#ef4444", "crit": "#ef4444", "critical": "#ef4444",
+            "error": "#f97316", "warning": "#fbbf24", "warn": "#fbbf24",
+            "notice": "#60a5fa", "info": "#34d399", "debug": "#a1a1aa", "unknown": "#6b7280",
+        }
+        colors = [_SEV_COLORS.get(k, _ACCENT) for k, _ in ordered]
+        n = len(ordered)
+        fig, ax = plt.subplots(figsize=(7, max(2.5, n * 0.38)))
+        y = np.arange(n)
+        vals = [float(v) for _, v in ordered]
+        ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
+        ax.set_yticks(y)
+        ax.set_yticklabels([k for k, _ in ordered], fontsize=9, color=_TEXT)
+        ax.set_xlabel("Events", color=_TEXT)
+        ax.set_title("Severity Distribution", color=_TEXT, fontsize=11, pad=10)
+        ax.invert_yaxis()
+        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.yaxis.grid(False)
+        for bar, val in zip(ax.patches, vals):
+            ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
+                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
+        _apply_dark_theme(fig, ax)
+        fig.tight_layout()
+        charts["struct_severity_dist"] = _fig_to_uri(fig)
+
+    # Protocol distribution
+    if protocols:
+        top = sorted(protocols.items(), key=lambda x: -x[1])[:12]
+        uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
+                    "Protocol Distribution", "Events")
+        if uri:
+            charts["struct_protocols"] = uri
+
+    # Action counts (DROP / ACCEPT / ALERT etc.)
+    if actions:
+        top = sorted(actions.items(), key=lambda x: -x[1])[:12]
+        _ACT_COLORS = {"DROP": "#ef4444", "REJECT": "#f97316", "BLOCK": "#f97316",
+                       "DRP": "#ef4444", "ACCEPT": "#34d399", "ALLOW": "#34d399",
+                       "ALERT": "#fbbf24"}
+        colors = [_ACT_COLORS.get(a, _ACCENT) for a, _ in top]
+        n = len(top)
+        fig, ax = plt.subplots(figsize=(7, max(2.0, n * 0.38)))
+        y = np.arange(n)
+        vals = [float(v) for _, v in top]
+        ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
+        ax.set_yticks(y)
+        ax.set_yticklabels([a for a, _ in top], fontsize=9, color=_TEXT)
+        ax.set_xlabel("Count", color=_TEXT)
+        ax.set_title("Firewall / Action Counts", color=_TEXT, fontsize=11, pad=10)
+        ax.invert_yaxis()
+        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.yaxis.grid(False)
+        for bar, val in zip(ax.patches, vals):
+            ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
+                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
+        _apply_dark_theme(fig, ax)
+        fig.tight_layout()
+        charts["struct_actions"] = _fig_to_uri(fig)
+
+    # Top destination ports
+    if dst_ports:
+        top = sorted(dst_ports.items(), key=lambda x: -x[1])[:15]
+        # Map well-known ports to service names
+        _PORT_NAMES = {22: "SSH(22)", 23: "Telnet(23)", 25: "SMTP(25)", 53: "DNS(53)",
+                       80: "HTTP(80)", 110: "POP3(110)", 143: "IMAP(143)", 443: "HTTPS(443)",
+                       445: "SMB(445)", 3306: "MySQL(3306)", 3389: "RDP(3389)",
+                       5432: "Postgres(5432)", 6379: "Redis(6379)", 8080: "HTTP-alt(8080)"}
+        labels = [_PORT_NAMES.get(p, str(p)) for p, _ in top]
+        uri = _hbar(labels, [float(v) for _, v in top], "Top Destination Ports", "Events")
+        if uri:
+            charts["struct_dst_ports"] = uri
+
+    # HTTP status code distribution
+    if status_codes:
+        grouped: Dict[str, int] = {}
+        for sc, cnt in status_codes.items():
+            grp = f"{sc // 100}xx"
+            grouped[grp] = grouped.get(grp, 0) + cnt
+        top = sorted(grouped.items(), key=lambda x: x[0])
+        _SC_COLORS = {"1xx": "#60a5fa", "2xx": "#34d399", "3xx": "#fbbf24",
+                      "4xx": "#f97316", "5xx": "#ef4444"}
+        colors = [_SC_COLORS.get(g, _ACCENT) for g, _ in top]
+        n = len(top)
+        fig, ax = plt.subplots(figsize=(6, max(2.0, n * 0.42)))
+        y = np.arange(n)
+        vals = [float(v) for _, v in top]
+        ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
+        ax.set_yticks(y)
+        ax.set_yticklabels([g for g, _ in top], fontsize=9, color=_TEXT)
+        ax.set_xlabel("Count", color=_TEXT)
+        ax.set_title("HTTP Status Codes", color=_TEXT, fontsize=11, pad=10)
+        ax.invert_yaxis()
+        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.yaxis.grid(False)
+        for bar, val in zip(ax.patches, vals):
+            ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
+                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
+        _apply_dark_theme(fig, ax)
+        fig.tight_layout()
+        charts["struct_http_status"] = _fig_to_uri(fig)
+
+    # Hourly activity heatmap / bar
+    if hours:
+        counts = [0] * 24
+        for h in hours:
+            if 0 <= h < 24:
+                counts[h] += 1
+        fig, ax = plt.subplots(figsize=(9, 2.8))
+        x = np.arange(24)
+        bar_colors = [("#ef4444" if (c == max(counts) and max(counts) > 0) else _ACCENT)
+                      for c in counts]
+        ax.bar(x, counts, color=bar_colors, width=0.8, edgecolor="none", alpha=0.88)
+        ax.set_xticks(x)
+        ax.set_xticklabels([f"{h:02d}h" for h in range(24)], fontsize=7, rotation=45, color=_TEXT)
+        ax.set_ylabel("Events", color=_TEXT)
+        ax.set_title("Hourly Activity", color=_TEXT, fontsize=11, pad=10)
+        _apply_dark_theme(fig, ax)
+        fig.tight_layout()
+        charts["struct_hourly"] = _fig_to_uri(fig)
+
+    return charts
+
+
 def generate_chart_data(
     rows: List[Dict[str, Any]] | None = None,
     findings: List[str] | None = None,

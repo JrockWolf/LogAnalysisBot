@@ -97,6 +97,12 @@
         AI Summary
       </button>
       {% endif %}
+      {% if is_text_type and struct_summary and struct_summary.total > 0 %}
+      <button type="button" class="tab" data-tab="structured">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+        Structured Data
+      </button>
+      {% endif %}
     </div>
 
     <!-- ═══════════════════════════════════════════ OVERVIEW TAB ═══════════════════════════════════════════ -->
@@ -744,7 +750,167 @@
       </div>
     </div>
     {% endif %}
+
+  {% if is_text_type and struct_summary and struct_summary.total > 0 %}
+  <div class="tab-content" id="tab-structured">
+    <div class="results-section">
+      <h2>Structured Data</h2>
+      <p class="meta">
+        Unstructured log lines automatically parsed into a consistent schema for better visualization and anomaly detection.
+      </p>
+
+      <!-- Coverage stat cards -->
+      <div class="stats-grid" style="margin-bottom:1.5rem;">
+        <div class="stat-card">
+          <div class="stat-value">{{ struct_summary.structured_count | int }}</div>
+          <div class="stat-label">Records Structurized</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ struct_summary.structured_pct | round(1) }}%</div>
+          <div class="stat-label">Coverage</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ struct_summary.total | int }}</div>
+          <div class="stat-label">Total Records</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">{{ struct_summary.detected_formats | length }}</div>
+          <div class="stat-label">Formats Detected</div>
+        </div>
+      </div>
+
+      <!-- Coverage bar -->
+      <div class="struct-coverage-bar-wrap">
+        <div class="struct-coverage-bar" style="width: {{ [struct_summary.structured_pct, 100] | min }}%;"></div>
+      </div>
+      <p style="font-size:.8rem;color:var(--muted);margin:.4rem 0 1.5rem;">
+        {{ struct_summary.structured_count }} / {{ struct_summary.total }} records parsed ({{ struct_summary.structured_pct | round(1) }}%)
+      </p>
+
+      <!-- Detected formats -->
+      {% if struct_summary.detected_formats %}
+      <h3 style="margin-bottom:.75rem;">Detected Formats</h3>
+      <div style="display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:1.5rem;">
+        {% for fmt, cnt in struct_summary.detected_formats.items() %}
+        <span class="struct-format-pill">{{ fmt }}: {{ cnt | int }}</span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Field coverage grid -->
+      {% if struct_summary.field_coverage %}
+      <h3 style="margin-bottom:.75rem;">Field Coverage</h3>
+      <div class="struct-field-grid" style="margin-bottom:2rem;">
+        {% for field, pct in struct_summary.field_coverage.items() %}
+        {% if pct is not none %}
+        <div class="struct-field-item">
+          <div class="struct-badge {{ 'good' if pct >= 80 else ('ok' if pct >= 40 else 'poor') }}">
+            {{ pct | round(0) | int }}%
+          </div>
+          <span class="struct-field-name">{{ field }}</span>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Structured charts -->
+      {% if structured_charts %}
+      <h3 style="margin-bottom:1rem;">Structured Analysis Charts</h3>
+      <div class="chart-grid" style="margin-bottom:2rem;">
+        {% if structured_charts.struct_top_src_ips %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_top_src_ips }}" alt="Top Source IPs"></div>
+        {% endif %}
+        {% if structured_charts.struct_severity_dist %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_severity_dist }}" alt="Severity Distribution"></div>
+        {% endif %}
+        {% if structured_charts.struct_actions %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_actions }}" alt="Action Distribution"></div>
+        {% endif %}
+        {% if structured_charts.struct_dst_ports %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_dst_ports }}" alt="Top Dest Ports"></div>
+        {% endif %}
+        {% if structured_charts.struct_protocols %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_protocols }}" alt="Protocols"></div>
+        {% endif %}
+        {% if structured_charts.struct_http_status %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_http_status }}" alt="HTTP Status Codes"></div>
+        {% endif %}
+        {% if structured_charts.struct_top_dst_ips %}
+        <div class="chart-card"><img src="{{ structured_charts.struct_top_dst_ips }}" alt="Top Dest IPs"></div>
+        {% endif %}
+        {% if structured_charts.struct_hourly %}
+        <div class="chart-card chart-card--wide"><img src="{{ structured_charts.struct_hourly }}" alt="Hourly Activity"></div>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <!-- Preview table -->
+      {% if structured_preview %}
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem;">
+        <h3 style="margin:0;">Record Preview (first {{ structured_preview | length }})</h3>
+        <button class="btn btn--sm" id="downloadStructCsv">⬇ Download CSV</button>
+      </div>
+      <div class="struct-table-wrap">
+        <table class="struct-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              {% for col in preview_cols %}
+              <th>{{ col | replace('_', ' ') | title }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in structured_preview %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              {% for col in preview_cols %}
+              <td>{{ row[col] if row[col] is not none else '' }}</td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <!-- Store preview data for CSV download as JSON -->
+      <script id="structPreviewData" type="application/json">
+        {{ structured_preview | tojson }}
+      </script>
+      <script id="structPreviewCols" type="application/json">
+        {{ preview_cols | tojson }}
+      </script>
+      {% endif %}
+    </div>
   </div>
+  {% endif %}
+
+  </div>  {# end tab container #}
+
+  <script>
+    // CSV download for structured preview
+    var dlBtn = document.getElementById('downloadStructCsv');
+    if (dlBtn) {
+      dlBtn.addEventListener('click', function() {
+        try {
+          var rows = JSON.parse(document.getElementById('structPreviewData').textContent);
+          var cols = JSON.parse(document.getElementById('structPreviewCols').textContent);
+          var lines = [cols.join(',')];
+          rows.forEach(function(r) {
+            lines.push(cols.map(function(c) {
+              var v = r[c] == null ? '' : String(r[c]).replace(/"/g, '""');
+              return '"' + v + '"';
+            }).join(','));
+          });
+          var blob = new Blob([lines.join('\n')], {type:'text/csv'});
+          var a = document.createElement('a');
+          a.href = URL.createObjectURL(blob);
+          a.download = 'structured_preview.csv';
+          a.click();
+        } catch(e) { console.error('CSV download failed', e); }
+      });
+    }
+  </script>
 
   <script>
     (function() {
