@@ -1,33 +1,35 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec for LogWatcher desktop app.
+PyInstaller spec for LogWatcher desktop app — Linux, macOS, Windows.
 
-Build with:
+Build:
     pyinstaller logwatcher.spec
 
-Output: dist/LogWatcher   (folder mode)
-        dist/LogWatcher/LogWatcher   (executable)
+Outputs:
+    Linux / Windows : dist/LogWatcher/LogWatcher(.exe)   (folder mode)
+    macOS           : dist/LogWatcher.app                 (bundle)
 """
 
 import sys
 from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
-ROOT = Path(SPECPATH)  # noqa: F821  (SPECPATH is injected by PyInstaller)
+ROOT = Path(SPECPATH)  # noqa: F821  (injected by PyInstaller)
+
+IS_WINDOWS = sys.platform == "win32"
+IS_MAC     = sys.platform == "darwin"
+IS_LINUX   = sys.platform == "linux"
 
 # ── Data files ────────────────────────────────────────────────────────────────
 datas = [
-    # HTML templates and static assets
     (str(ROOT / "src" / "templates"), "src/templates"),
     (str(ROOT / "src" / "static"),    "src/static"),
 ]
-
-# Include pywebview's own data (platform renderer assets)
 datas += collect_data_files("webview")
 
 # ── Hidden imports ────────────────────────────────────────────────────────────
 hiddenimports = [
-    # FastAPI / Starlette internals not always auto-detected
+    # uvicorn internals
     "uvicorn.logging",
     "uvicorn.loops",
     "uvicorn.loops.asyncio",
@@ -38,19 +40,15 @@ hiddenimports = [
     "uvicorn.protocols.websockets.auto",
     "uvicorn.lifespan",
     "uvicorn.lifespan.on",
+    # Starlette / FastAPI
     "starlette.routing",
     "starlette.staticfiles",
     "starlette.templating",
     "jinja2",
     "multipart",
-    # pywebview platform backends (Linux uses gtk or qt)
-    "webview.platforms.gtk",
-    "webview.platforms.qt",
-    "webview.platforms.cocoa",   # macOS
-    "webview.platforms.winforms", # Windows
-    # scikit-learn tree / estimator internals
+    # scikit-learn
     *collect_submodules("sklearn"),
-    # Other app modules
+    # app modules
     "src.webapp",
     "src.analyzer",
     "src.charts",
@@ -66,6 +64,18 @@ hiddenimports = [
     "src.translator",
     "src.desktop",
 ]
+
+# Platform-specific pywebview backends
+if IS_LINUX:
+    hiddenimports += ["webview.platforms.gtk", "webview.platforms.qt", "qtpy"]
+elif IS_MAC:
+    hiddenimports += ["webview.platforms.cocoa"]
+    try:
+        datas += collect_data_files("objc")
+    except Exception:
+        pass
+elif IS_WINDOWS:
+    hiddenimports += ["webview.platforms.winforms", "webview.platforms.edgechromium", "clr"]
 
 # ── Analysis ──────────────────────────────────────────────────────────────────
 a = Analysis(  # noqa: F821
@@ -90,18 +100,37 @@ exe = EXE(  # noqa: F821
     name="LogWatcher",
     debug=False,
     bootloader_ignore_signals=False,
-    strip=False,
+    strip=not IS_WINDOWS,       # strip is unsupported on Windows
     upx=True,
-    console=False,          # no terminal window on launch
-    icon=None,              # add an .ico/.icns path here if you have one
+    console=False,              # no terminal window on any platform
+    # Provide platform-specific icons if available
+    icon=str(ROOT / "assets" / "icon.ico")   if IS_WINDOWS and (ROOT / "assets" / "icon.ico").exists()   else
+         str(ROOT / "assets" / "icon.icns")  if IS_MAC     and (ROOT / "assets" / "icon.icns").exists()  else
+         str(ROOT / "assets" / "icon.png")   if IS_LINUX   and (ROOT / "assets" / "icon.png").exists()   else None,
 )
 
 coll = COLLECT(  # noqa: F821
     exe,
     a.binaries,
     a.datas,
-    strip=False,
+    strip=not IS_WINDOWS,
     upx=True,
     upx_exclude=[],
     name="LogWatcher",
 )
+
+# macOS: wrap in a proper .app bundle
+if IS_MAC:
+    app = BUNDLE(  # noqa: F821
+        coll,
+        name="LogWatcher.app",
+        icon=str(ROOT / "assets" / "icon.icns") if (ROOT / "assets" / "icon.icns").exists() else None,
+        bundle_identifier="online.logwatcher.app",
+        info_plist={
+            "CFBundleDisplayName": "LogWatcher",
+            "CFBundleShortVersionString": "1.0.0",
+            "NSHighResolutionCapable": True,
+            "NSRequiresAquaSystemAppearance": False,  # support dark mode
+        },
+    )
+

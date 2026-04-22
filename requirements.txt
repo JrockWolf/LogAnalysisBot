@@ -26,6 +26,23 @@ scapy>=2.5.0
 # Desktop app
 pywebview>=5.0.0
 pyinstaller>=6.0.0
-PyQt6>=6.7.0
-PyQt6-WebEngine>=6.7.0
-qtpy>=2.4.0
+
+# pywebview GUI backend — install the one for your OS:
+#
+#   Linux  (GTK): sudo apt install python3-gi gir1.2-webkit2-4.0
+#   Linux  (Qt):  pip install PyQt6 PyQt6-WebEngine qtpy        ← already below
+#   macOS:        pip install pyobjc-framework-WebKit            ← already below
+#   Windows:      install WebView2 Runtime (ships with Win10/11, or download from Microsoft)
+#                 pip install pythonnet                          ← already below
+
+# Qt backend (Linux)
+PyQt6>=6.7.0; sys_platform == "linux"
+PyQt6-WebEngine>=6.7.0; sys_platform == "linux"
+qtpy>=2.4.0; sys_platform == "linux"
+
+# WebKit backend (macOS)
+pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
+
+# WinForms/EdgeChromium backend (Windows)
+pythonnet>=3.0.0; sys_platform == "win32"

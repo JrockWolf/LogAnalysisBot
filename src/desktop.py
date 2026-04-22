@@ -2,17 +2,30 @@
 
 Starts the FastAPI server in a background thread, waits for it to be ready,
 then opens a pywebview window. When the window is closed the server is stopped.
+
+Works on Linux (Qt or GTK), macOS (WebKit), and Windows (WebView2/WinForms).
+Also compatible with PyInstaller frozen builds.
 """
 
 from __future__ import annotations
 
+import os
 import socket
 import sys
 import threading
 import time
+from pathlib import Path
 
 import uvicorn
 import webview
+
+
+def _base_dir() -> Path:
+    """Return the app's base directory, works both normally and when frozen."""
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        # PyInstaller extracts files to sys._MEIPASS at runtime
+        return Path(sys._MEIPASS)  # type: ignore[attr-defined]
+    return Path(__file__).resolve().parent.parent
 
 # ── Port selection ────────────────────────────────────────────────────────────
 
@@ -48,7 +61,16 @@ class _ServerThread(threading.Thread):
         self._server: uvicorn.Server | None = None
 
     def run(self) -> None:
-        from .webapp import app as fastapi_app  # lazy import keeps startup fast
+        # Use absolute import when frozen (no package __init__ in PyInstaller bundle)
+        if getattr(sys, "frozen", False):
+            from src.webapp import app as fastapi_app  # type: ignore[import]
+        else:
+            from .webapp import app as fastapi_app  # type: ignore[import]
+
+        # Point Jinja2 templates and static files at the correct extracted path
+        base = _base_dir()
+        os.environ.setdefault("LOGWATCHER_TEMPLATES", str(base / "src" / "templates"))
+        os.environ.setdefault("LOGWATCHER_STATIC", str(base / "src" / "static"))
 
         config = uvicorn.Config(
             fastapi_app,
@@ -92,7 +114,26 @@ def main() -> None:
     # Stop the server when the window is destroyed
     window.events.closed += server.stop
 
-    webview.start(debug=False)
+    # Pick the best available GUI backend for the current platform
+    gui: str | None = None
+    if sys.platform == "linux":
+        # Prefer Qt (pip-installable); fall back to GTK (system package)
+        try:
+            import qtpy  # noqa: F401
+            gui = "qt"
+        except ImportError:
+            gui = "gtk"
+    elif sys.platform == "darwin":
+        gui = "cocoa"
+    elif sys.platform == "win32":
+        # Use EdgeChromium (WebView2) when available, else WinForms
+        try:
+            import clr  # pythonnet  # noqa: F401
+            gui = "winforms"
+        except ImportError:
+            gui = "edgechromium"
+
+    webview.start(gui=gui, debug=False)
 
 
 if __name__ == "__main__":
