@@ -1,82 +1,61 @@
 # LogAnalysisBot
 
-An AI-powered security log analysis platform for SOC teams and security researchers. Combines rule-based heuristics, 6 ML anomaly detection models, and multi-provider LLM enrichment with automatic MITRE ATT&CK mapping.
+Drop a log file, get a triage report. LogAnalysisBot runs a four-stage pipeline — **parse → normalize → detect → summarize** — and produces structured findings with MITRE ATT&CK links and confidence scores. PII and hostnames are redacted before anything leaves your machine.
 
-## Features
+## Core use case
 
-### 🛡️ Threat Detection
-- **Heuristic Detection** — Rules-based alerts for DDoS, DoS, brute force, port scanning, web attacks, bot activity, infiltration, and more
-- **PCAP Parsing** — Wireshark capture analysis via Scapy for network-level threat detection
-- **Syslog / Text Log Parsing** — Multi-format log ingestion with automatic format detection
+A SOC analyst drops a firewall log, syslog bundle, PCAP capture, or labeled IDS dataset onto the tool. Within seconds they get:
 
-### 🤖 LLM Enrichment (5 Providers)
-- **OpenAI** (GPT-3.5, GPT-4, etc.)
-- **Perplexity** (sonar-pro)
-- **Google Gemini** (gemini-2.0-flash, configurable)
-- **DeepSeek**
-- **HuggingFace Transformers** (local inference, no API key required)
-- All providers use timeout protection (default 30s, configurable via `LLM_TIMEOUT_SECONDS`)
+1. **Structured findings** — severity-ranked list, each linked back to the exact log lines that triggered it.
+2. **MITRE ATT&CK references** — technique ID, tactic, and direct URL automatically mapped to each finding.
+3. **ML consensus score** — six anomaly models vote; only findings where ≥ 2 models agree are promoted.
+4. **LLM triage narrative** — one-paragraph analyst-grade summary from whichever LLM provider is configured (optional; works fully offline without one).
+5. **Redacted output** — IPs, emails, usernames, and custom patterns are masked before any data reaches an external API.
 
-### ⚡ ML Anomaly Detection (6 Models)
-| Model | Type | Notes |
-|---|---|---|
-| **Isolation Forest** | Ensemble / Tree | Fast, unsupervised, robust to outliers |
-| **Local Outlier Factor** | Density-based | Detects local anomalies, k=20 neighbors |
-| **One-Class SVM** | Kernel / Novelty | RBF kernel, capped at 5000 samples |
-| **DBSCAN** | Clustering | Noise points = anomalies, returns cluster count |
-| **Random Forest** | Supervised | Active when label columns present; 3-fold CV |
-| **Ensemble Consensus** | Majority Vote | Flags records where ≥2 models agree |
+## Pipeline
 
-### 🗺️ MITRE ATT&CK Mapping
-- Automatic technique enrichment from findings
-- 200+ mapped techniques with tactic labels and direct ATT&CK URLs
-- Displayed as clickable tags in results
-
-### 📊 Statistical Analysis
-- Dataset overview: record counts, feature distributions, category breakdown
-- Mann-Whitney U tests, independent t-tests
-- Baseline z-score anomaly comparison
-- Model performance metrics: accuracy, precision, recall, F1, FPR
-- Hypothesis testing with evidence summary
-
-### 🌐 Web UI
-- Drag-and-drop file upload
-- Multi-model comparison table in results
-- Interactive charts via matplotlib
-- Dark professional theme
-
-### 📁 Supported File Formats
-| Format | Description |
-|---|---|
-| `.pcap` / `.pcapng` / `.cap` | Wireshark network captures |
-| `.csv` | Labeled flow datasets, any schema |
-| `.json` / `.jsonl` | Structured log entries |
-| `.log` / `.txt` | Raw text / syslog lines |
-| `.gz` / `.zip` | Compressed archives (auto-extracted) |
-
-### 🔧 Additional Tools
-- **CLI** (`src/cli.py`) via Typer — analyze, eval, generate subcommands
-- **Multi-language Translator** — translate findings to Spanish, French, German, Chinese, Japanese, and more
-- **Simulated Log Generator** — generates realistic security events for testing
-- **Dataset Loader** — auto-detects and normalizes popular IDS datasets (CIC-IDS2017, UNSW-NB15, etc.)
+```
+Input file
+    │
+    ▼
+┌─────────────┐    src/parsers.py
+│   Parser    │    text · JSON · CSV · PCAP · .gz/.zip
+└──────┬──────┘
+       │ raw records
+       ▼
+┌─────────────┐    src/normalizer.py  (wraps structurizer)
+│  Normalizer │    timestamp · severity · IPs · ports · method · action
+└──────┬──────┘
+       │ structured records
+       ▼
+┌─────────────┐    src/detector.py
+│  Detector   │    heuristics + Isolation Forest + LOF + SVM + DBSCAN + RF + Ensemble
+└──────┬──────┘
+       │ raw findings
+       ▼
+┌─────────────┐    src/summarizer.py
+│  Summarizer │    structured output · evidence links · LLM narrative
+└──────┬──────┘
+       │
+       ▼
+  AnalysisResult  (src/output_schema.py)
+```
 
 ## Quickstart
 
-1. Create and activate a Python 3.8+ virtual environment.
-2. Install dependencies:
-
 ```bash
-python -m pip install -r requirements.txt
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-3. (Optional) Configure an LLM provider key or use a local HuggingFace model:
+Optional — configure an LLM provider (or skip for offline/heuristic-only mode):
 
 ```bash
 export OPENAI_API_KEY="sk-..."
-export PERPLEXITY_API_KEY="pplx-..."
 export GEMINI_API_KEY="..."
+export PERPLEXITY_API_KEY="pplx-..."
 export DEEPSEEK_API_KEY="..."
-# or use a local transformers model (defaults to gpt2)
+# offline alternative — local HuggingFace model:
 export HF_MODEL="gpt2"
 ```
 
@@ -94,6 +73,14 @@ python -m src.cli analyze samples/sample_1.log
 python -m src.cli analyze samples/sample.csv --mitre
 ```
 
+### Redact PII before analysis
+
+```bash
+python -m src.cli analyze samples/sample_1.log --redact
+# redact custom patterns too
+python -m src.cli analyze samples/sample_1.log --redact --redact-pattern "corp\.example\.com"
+```
+
 ### Evaluate detection on a labeled dataset
 
 ```bash
@@ -107,13 +94,19 @@ python -m src.cli evaluate samples/dataset_sample.csv --output results.json
 python -m src.cli dataset-info samples/dataset_sample.csv
 ```
 
-### Generate synthetic logs
+### Benchmark against a public IDS dataset
+
+```bash
+python -m src.cli evaluate samples/cicids2017_sample.csv --benchmark
+```
+
+### Generate synthetic logs for testing
 
 ```bash
 python -m src.cli generate --out samples --count 5
 ```
 
-### Translate analysis results
+### Translate results
 
 ```bash
 python -m src.cli translate-analysis samples/sample_1.log --lang es
@@ -128,55 +121,102 @@ python -m src.webapp
 
 See [docs/TRANSLATOR.md](docs/TRANSLATOR.md) for translation documentation.
 
-## Dataset Support
+## Structured output format
 
-The project supports any labeled intrusion detection dataset in CSV format with a `Label` column and network flow features. Datasets are auto-detected by column headers (e.g., `Label`, `Flow Duration`, `Destination Port`). Compatible datasets include CIC-IDS2017, CSE-CIC-IDS2018, UNSW-NB15, and others with similar structure.
+Every analysis returns an `AnalysisResult` (defined in `src/output_schema.py`):
 
-Supported attack categories:
-
-| Category | Attack Types |
-|---|---|
-| Brute Force | FTP-Patator, SSH-Patator |
-| DoS | Hulk, Slowloris, Slowhttptest, GoldenEye |
-| DDoS | Distributed Denial of Service |
-| Web Attacks | Brute Force, XSS, SQL Injection |
-| Reconnaissance | Port Scanning |
-| Botnet | Bot traffic |
-| Infiltration | Infiltration attacks |
-
-Sample extracts can be placed in `samples/` for testing.
-
-## Architecture
-
+```json
+{
+  "file": "firewall.log",
+  "analyzed_at": "2026-04-24T10:00:00Z",
+  "record_count": 4200,
+  "redacted": true,
+  "findings": [
+    {
+      "id": "f-001",
+      "severity": "high",
+      "confidence": 0.91,
+      "category": "Brute Force",
+      "description": "Multiple failed SSH logins from [IP_0] (14 attempts)",
+      "evidence": [
+        {"line_number": 42, "raw": "Failed password for root from [IP_0] port 2222"},
+        {"line_number": 43, "raw": "Failed password for admin from [IP_0] port 2222"}
+      ],
+      "mitre": [
+        {
+          "technique_id": "T1110.001",
+          "name": "Password Guessing",
+          "tactic": "Credential Access",
+          "url": "https://attack.mitre.org/techniques/T1110/001/"
+        }
+      ]
+    }
+  ],
+  "summary": "14 high-severity findings. Dominant threat: SSH brute-force from 3 unique sources..."
+}
 ```
-src/
-├── cli.py              # Typer CLI (analyze, evaluate, dataset-info, generate, translate)
-├── webapp.py           # FastAPI web interface
-├── parsers.py          # Log parsers (text, JSON, CSV, labeled datasets)
-├── analyzer.py         # Heuristic + LLM analysis pipeline
-├── dataset_loader.py   # Dataset CSV loader and label normalization
-├── mitre_mapping.py    # MITRE ATT&CK technique mapping
-├── eval.py             # Evaluation metrics (binary, per-class, confusion matrix)
-├── llm_adapter.py      # Multi-provider LLM interface
-├── generator.py        # Synthetic log generator
-└── translator.py       # Multi-language translation
+
+## Privacy and redaction
+
+`src/redactor.py` runs before any LLM call. Redactions are applied to the text sent to external APIs; original records are kept in memory for evidence line reconstruction.
+
+| Entity | Replacement |
+|--------|-------------|
+| IPv4 addresses | `[IP_0]`, `[IP_1]`, … |
+| IPv6 addresses | `[IPv6_0]`, `[IPv6_1]`, … |
+| Email addresses | `[EMAIL_0]`, `[EMAIL_1]`, … |
+| Usernames (sudo/su/login) | `[USER_0]`, `[USER_1]`, … |
+| Hostnames | `[HOST_0]`, `[HOST_1]`, … |
+| Custom regex patterns | `[REDACTED_0]`, `[REDACTED_1]`, … |
+
+Reversible replacement map is kept in `RedactionContext` for reconstructing display text when needed.
+
+## Detection modules
+
+| Module | Role |
+|--------|------|
+| `src/parsers.py` | Ingest any file format: syslog, JSON/JSONL, CSV, PCAP, `.gz`/`.zip` |
+| `src/normalizer.py` | Map raw records → typed schema (timestamp, severity, IPs, ports, action) |
+| `src/detector.py` | Heuristic rules + 6 ML anomaly models → raw `FindingCandidate` list |
+| `src/summarizer.py` | Rank, deduplicate, attach evidence lines, call LLM narrative |
+| `src/output_schema.py` | Pydantic `Finding` / `AnalysisResult` output contracts |
+| `src/redactor.py` | PII / hostname scrubbing with reversible replacement map |
+
+## Supported file formats
+
+| Format | Description |
+|--------|-------------|
+| `.pcap` / `.pcapng` / `.cap` | Wireshark network captures |
+| `.csv` | Labeled flow datasets (CIC-IDS2017, UNSW-NB15, …) or generic |
+| `.json` / `.jsonl` | Structured log entries |
+| `.log` / `.txt` | Raw text / syslog lines |
+| `.gz` / `.zip` | Compressed archives (auto-extracted) |
+
+## Benchmarks
+
+Run the built-in benchmark suite against synthetic datasets:
+
+```bash
+python -m pytest tests/test_benchmark.py -v
 ```
 
-## Running Tests
+The benchmark generates controlled synthetic log corpora (brute-force, DoS, port scan, web attack, benign mix) and measures precision / recall / F1 per attack category against ground-truth labels. Results are printed as a Markdown table to stdout.
+
+## Running all tests
 
 ```bash
 python -m pytest -q
 ```
 
-64 tests covering dataset loading, parsing, MITRE mapping, network attack detection, evaluation metrics, translation, and integration.
-
 ## Notes
 
-- Provider detection precedence: Perplexity → Gemini → Deepseek → OpenAI → HuggingFace local. Force a provider with `LLM_PROVIDER=openai|perplexity|transformers`.
-- The analyzer produces findings via deterministic heuristics without an LLM; LLM enhances summaries when available.
-- Labeled dataset CSV files are auto-detected by column headers — no special flags needed.
+- Provider detection precedence: Perplexity → Gemini → Deepseek → OpenAI → HuggingFace local. Override with `LLM_PROVIDER=openai|perplexity|transformers`.
+- Heuristic detection runs without any LLM key. LLM enriches the narrative only when available.
+- Labeled dataset CSVs are auto-detected by column headers — no special flags needed.
+- Redaction is enabled by default when an external LLM provider is active. Disable with `LOGBOT_REDACT=0`.
 
 ## Security and Ethics
 
-- Avoid uploading real sensitive logs to third-party APIs. Use synthetic or sanitized logs for experimentation.
+- Redaction runs before any data reaches an external API. Still, treat output as potentially sensitive.
+- Do not use this tool to analyze logs you are not authorized to access.
 

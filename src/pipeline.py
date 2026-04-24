@@ -1277,3 +1277,82 @@ def compute_hypotheses(
                 })
 
     return hypotheses
+
+
+# ---------------------------------------------------------------------------
+# Full pipeline orchestrator
+# ---------------------------------------------------------------------------
+
+def run_full_pipeline(
+    path: "Any",
+    redact: bool = False,
+    custom_redact_patterns: Optional[List[str]] = None,
+    run_ml: bool = True,
+    llm_provider: Optional[str] = None,
+    llm_api_key: Optional[str] = None,
+    llm_model: Optional[str] = None,
+) -> Any:
+    """Run the complete parse → normalize → detect → summarize pipeline.
+
+    Returns a fully-populated :class:`~src.output_schema.AnalysisResult`.
+
+    Parameters
+    ----------
+    path:
+        Path to the log file to analyze.
+    redact:
+        Scrub IPs, emails, and usernames before any LLM call.  Auto-enabled
+        when an external LLM provider is active unless ``LOGBOT_REDACT=0``.
+    custom_redact_patterns:
+        Extra regex patterns passed to :class:`~src.redactor.Redactor`.
+    run_ml:
+        Whether to run the six ML anomaly models (default ``True``).
+    llm_provider:
+        Provider name ('openai', 'gemini', 'perplexity', 'deepseek', 'transformers').
+    llm_api_key:
+        API key for the chosen provider.
+    llm_model:
+        Model identifier override.
+    """
+    import os
+    from pathlib import Path as _Path
+    from .parsers import parse_log
+    from .normalizer import normalize
+    from .detector import detect
+    from .summarizer import summarize
+    from .redactor import Redactor
+
+    file_path = _Path(path) if not isinstance(path, _Path) else path
+
+    env_redact = os.getenv("LOGBOT_REDACT", "").strip()
+    should_redact = redact or (env_redact != "0" and bool(
+        llm_provider or os.getenv("OPENAI_API_KEY") or os.getenv("GEMINI_API_KEY")
+        or os.getenv("PERPLEXITY_API_KEY") or os.getenv("DEEPSEEK_API_KEY")
+        or os.getenv("HF_MODEL")
+    ))
+
+    # Stage 1: Parse
+    records = parse_log(file_path)
+
+    # Stage 2: Normalize
+    records = normalize(records)
+
+    # Stage 3: Redact (before LLM)
+    if should_redact:
+        redactor = Redactor(custom_patterns=custom_redact_patterns or [])
+        records = redactor.redact_records(records)
+
+    # Stage 4: Detect
+    candidates = detect(records, run_ml=run_ml)
+
+    # Stage 5: Summarize → structured result
+    return summarize(
+        candidates,
+        records,
+        file_path=file_path,
+        redacted=should_redact,
+        llm_provider=llm_provider,
+        llm_api_key=llm_api_key,
+        llm_model=llm_model,
+    )
+

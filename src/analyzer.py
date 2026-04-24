@@ -286,12 +286,15 @@ def heuristic_detect(records: List[Dict[str, Any]]) -> List[str]:
     if records[0].get("type") == "pcap":
         return _detect_pcap_attacks(records)
 
-    # Original syslog-based heuristics
-    # aggregate SSH failures by IP
+    # aggregate SSH failures by IP (supports plain IPs and redacted [IP_N] tokens)
     ssh_failures = {}
+    _RE_SSH_FAIL = re.compile(
+        r"Failed password for .* from ([\d.]+|\[IP_\d+\])",
+        re.IGNORECASE,
+    )
     for r in records:
         raw = r.get("raw") or str(r)
-        m = re.search(r"Failed password for .* from (\d+\.\d+\.\d+\.\d+)", raw)
+        m = _RE_SSH_FAIL.search(raw)
         if m:
             ip = m.group(1)
             ssh_failures[ip] = ssh_failures.get(ip, 0) + 1
@@ -310,6 +313,46 @@ def heuristic_detect(records: List[Dict[str, Any]]) -> List[str]:
         raw = r.get("raw") or str(r)
         if "audit(" in raw and "/etc/shadow" in raw:
             findings.append("Audit event: possible unauthorized access to /etc/shadow")
+
+    # Port scan detection: single source IP hitting many ports in text records
+    _RE_PORT_CONN = re.compile(
+        r"(?:connection attempt|connect|probe|scan).*?(?:from\s+)?([\d.]+).*?(?:to\s+)?port\s+(\d+)",
+        re.IGNORECASE,
+    )
+    _port_scan_hits: dict = {}
+    for r in records:
+        raw = r.get("raw") or str(r)
+        m = _RE_PORT_CONN.search(raw)
+        if m:
+            src = m.group(1) or "unknown"
+            port = m.group(2)
+            if src not in _port_scan_hits:
+                _port_scan_hits[src] = set()
+            _port_scan_hits[src].add(port)
+    for src, ports in _port_scan_hits.items():
+        if len(ports) >= 10:
+            findings.append(
+                f"Port Scan detected from {src}: {len(ports)} unique destination ports probed"
+            )
+
+    # Web attack detection: SQL injection, XSS, path traversal, command injection
+    _web_attack_patterns = [
+        (re.compile(r"union\s+select|'\s*--|\bor\s+1\s*=\s*1\b|xp_cmdshell", re.IGNORECASE),
+         "SQL Injection"),
+        (re.compile(r"<script\b.*?>|javascript:", re.IGNORECASE), "XSS"),
+        (re.compile(r"\.\./\.\.|%2e%2e%2f|/etc/passwd|/etc/shadow", re.IGNORECASE),
+         "Path Traversal"),
+        (re.compile(r"cmd=|exec=|system\(|/bin/sh|/bin/bash|cat\s+/etc", re.IGNORECASE),
+         "Command Injection"),
+    ]
+    _web_findings: dict = {}
+    for r in records:
+        raw = r.get("raw") or str(r)
+        for pattern, label in _web_attack_patterns:
+            if pattern.search(raw):
+                _web_findings[label] = _web_findings.get(label, 0) + 1
+    for label, count in _web_findings.items():
+        findings.append(f"Web Attack ({label}) detected: {count} matching request(s)")
 
     return findings
 
@@ -439,7 +482,7 @@ Log entries:
         "llm_text": None,
         "llm_provider": None,
         "requested_provider": selected_provider or "auto",
-        "requested_model": model_hint or None,
+        "requested_model": raw_model_hint or None,
         "model_used": None,
         "token_usage": {
             "prompt": prompt_tokens,

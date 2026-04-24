@@ -1,5 +1,6 @@
 import typer
 from pathlib import Path
+from typing import List, Optional
 from dotenv import load_dotenv
 from .generator import generate_samples
 from .analyzer import analyze_logs, analyze_dataset
@@ -27,8 +28,29 @@ def generate(out: Path = typer.Option(Path("./samples"), help="Output folder for
 def analyze(
     path: Path = typer.Argument(..., help="Path to log file"),
     mitre: bool = typer.Option(False, "--mitre", "-m", help="Include MITRE ATT&CK mappings"),
+    redact: bool = typer.Option(False, "--redact", "-r", help="Redact IPs, emails, and usernames before LLM calls"),
+    redact_pattern: Optional[List[str]] = typer.Option(
+        None, "--redact-pattern", help="Additional regex patterns to redact (repeatable)"
+    ),
+    output: Optional[Path] = typer.Option(None, "--output", "-o", help="Save structured JSON result to file"),
 ):
     """Analyze a log file and print findings."""
+    from .redactor import Redactor
+    from .parsers import parse_log
+    from .normalizer import normalize
+    from .detector import detect
+    from .summarizer import summarize
+
+    records = parse_log(path)
+    records = normalize(records)
+
+    redactor = None
+    if redact:
+        redactor = Redactor(custom_patterns=list(redact_pattern or []))
+        records = redactor.redact_records(records)
+        typer.echo(f"[redact] Applied redaction to {len(records)} records")
+
+    # Fast heuristic-only path for display
     findings = analyze_logs(path)
     for f in findings:
         typer.echo(f"- {f}")
@@ -44,11 +66,18 @@ def analyze(
                 for t in techniques:
                     typer.echo(f"    -> {t['technique_id']} - {t['name']} ({t['tactic']})")
 
+    if output:
+        candidates = detect(records, run_ml=False)
+        result = summarize(candidates, records, file_path=path, redacted=redact)
+        output.write_text(result.to_json(), encoding="utf-8")
+        typer.echo(f"\nStructured result saved to: {output}")
+
 
 @app.command()
 def evaluate(
     path: Path = typer.Argument(..., help="Path to labeled dataset CSV sample file"),
     output: Path = typer.Option(None, "--output", "-o", help="Save JSON results to file"),
+    benchmark: bool = typer.Option(False, "--benchmark", help="Print precision/recall/F1 benchmark table"),
 ):
     """Evaluate detection performance against a labeled dataset sample."""
     from .eval import evaluate_dataset, format_evaluation_report
@@ -58,8 +87,22 @@ def evaluate(
     report = format_evaluation_report(results)
     typer.echo(report)
 
+    if benchmark:
+        from .eval import per_class_metrics
+        pred = results.get("predicted_labels", [])
+        gold = results.get("gold_labels", [])
+        if pred and gold:
+            per_class = per_class_metrics(pred, gold)
+            typer.echo("\n## Per-Class Benchmark\n")
+            typer.echo(f"{'Category':<30} {'P':>6} {'R':>6} {'F1':>6}")
+            typer.echo("-" * 52)
+            for cat, m in sorted(per_class.items(), key=lambda x: -x[1].get("f1", 0)):
+                typer.echo(
+                    f"{cat:<30} {m.get('precision', 0):>6.2f} "
+                    f"{m.get('recall', 0):>6.2f} {m.get('f1', 0):>6.2f}"
+                )
+
     if output:
-        # Save JSON (exclude non-serializable items)
         with open(output, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, default=str)
         typer.echo(f"\nResults saved to: {output}")
