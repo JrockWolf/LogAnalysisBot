@@ -685,6 +685,13 @@ def run_all_models(
         except Exception as e:
             results["random_forest"] = {**_err_base, "error": str(e)}
 
+    # Deep learning: LSTM Autoencoder (sequence-aware, unsupervised)
+    try:
+        from .deep_detector import run_lstm_autoencoder
+        results["lstm_autoencoder"] = run_lstm_autoencoder(records, contamination=contamination)
+    except Exception as e:
+        results["lstm_autoencoder"] = {**_err_base, "error": str(e), "method": "LSTM Autoencoder"}
+
     # Ensemble: majority vote across models with valid results
     vote_counts: Dict[int, int] = {}
     valid_models = [v for v in results.values() if not v.get("error") and v.get("anomaly_indices") is not None]

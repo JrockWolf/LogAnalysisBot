@@ -42,7 +42,8 @@ class FindingCandidate:
 
     method: str = "heuristic"
     """Detection method: 'heuristic', 'isolation_forest', 'lof', 'svm',
-    'dbscan', 'random_forest', 'ensemble', or 'ml_consensus'."""
+    'dbscan', 'random_forest', 'lstm_autoencoder', 'ensemble', or
+    'ml_consensus'."""
 
     ml_model_votes: int = 0
     """Number of ML models that flagged this record (for ensemble findings)."""
@@ -203,7 +204,8 @@ def _ml_candidates(records: List[Dict[str, Any]]) -> List[FindingCandidate]:
             FindingCandidate(
                 category="ML Anomaly",
                 description=(
-                    f"ML consensus anomaly ({votes}/{len(model_results)} models agree): "
+                    f"ML consensus anomaly ({votes}/{len(model_results)} models agree"
+                    f"{', incl. LSTM sequence analysis' if votes >= 2 else ''}): "
                     f"{raw_preview}"
                 ),
                 severity=sev,
