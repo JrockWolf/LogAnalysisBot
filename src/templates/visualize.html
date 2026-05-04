@@ -7,9 +7,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>(function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t);})();</script>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle light/dark mode" onclick="toggleTheme()"></button>
   <div class="container">
     <!-- Header -->
     <div class="results-header">
@@ -149,10 +151,13 @@
         <h3>Protocol Distribution</h3>
         {% set proto_total = dataset_summary.protocols.values()|sum or 1 %}
         <table class="data-table">
-          <tr><th>Protocol</th><th>Count</th><th>%</th></tr>
+          <caption>Protocol Distribution</caption>
+          <thead><tr><th>Protocol</th><th>Count</th><th>%</th></tr></thead>
+          <tbody>
           {% for proto, count in dataset_summary.protocols.items() %}
           <tr><td>{{ proto }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / proto_total * 100) }}%</td></tr>
           {% endfor %}
+          </tbody>
         </table>
         {% endif %}
 
@@ -161,10 +166,13 @@
         {% set cat_dict = dataset_summary.categories or dataset_summary.category_distribution %}
         {% set cat_total = cat_dict.values()|sum or 1 %}
         <table class="data-table">
-          <tr><th>Category</th><th>Count</th><th>%</th></tr>
+          <caption>Category Distribution</caption>
+          <thead><tr><th>Category</th><th>Count</th><th>%</th></tr></thead>
+          <tbody>
           {% for cat, count in cat_dict.items() %}
           <tr><td>{{ cat }}</td><td>{{ count }}</td><td>{{ "%.1f"|format(count / cat_total * 100) }}%</td></tr>
           {% endfor %}
+          </tbody>
         </table>
         {% endif %}
       </div>
@@ -237,7 +245,9 @@
         <h2>Per-Class Performance</h2>
         <div class="stats-table-wrapper">
           <table class="data-table">
-            <tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr>
+            <caption>Per-Class Performance Metrics</caption>
+            <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead>
+            <tbody>
             {% for cls, m in model_performance.per_class_metrics.items() %}
             <tr>
               <td>{{ cls }}</td>
@@ -247,6 +257,7 @@
               <td>{{ m.support }}</td>
             </tr>
             {% endfor %}
+            </tbody>
           </table>
         </div>
       </div>
@@ -374,14 +385,16 @@
         <h3>Feature-Level Significance</h3>
         <div class="stats-table-wrapper">
           <table class="data-table">
-            <tr>
+            <caption>Feature-Level Statistical Significance</caption>
+            <thead><tr>
               <th>Feature</th>
               <th>Anomaly Mean</th>
               <th>Normal Mean</th>
               <th>Effect Size</th>
               <th>p-value</th>
               <th>Significant</th>
-            </tr>
+            </tr></thead>
+            <tbody>
             {% for ft in statistical_tests.feature_tests %}
             <tr>
               <td class="nowrap">{{ ft.feature }}</td>
@@ -398,6 +411,7 @@
               </td>
             </tr>
             {% endfor %}
+            </tbody>
           </table>
         </div>
         {% endif %}
@@ -535,12 +549,15 @@
         {% endif %}
         <div class="stats-table-wrapper" style="margin-top:16px">
           <table class="data-table">
-            <tr><th>Rank</th><th>Feature</th><th>Importance</th></tr>
+            <caption>Feature Importance Rankings</caption>
+            <thead><tr><th>Rank</th><th>Feature</th><th>Importance</th></tr></thead>
+            <tbody>
             {% for fname, score in anomaly_result.feature_importances.items() %}
             {% if loop.index <= 20 %}
             <tr><td>{{ loop.index }}</td><td>{{ fname }}</td><td>{{ score }}</td></tr>
             {% endif %}
             {% endfor %}
+            </tbody>
           </table>
         </div>
         <div class="callout">
@@ -931,6 +948,35 @@
         });
       }
     })();
+  </script>
+
+  <script>
+    // ── Theme toggle ──────────────────────────────────────────
+    function initTheme() {
+      var saved = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+      updateThemeBtn(saved);
+    }
+
+    function toggleTheme() {
+      var current = document.documentElement.getAttribute('data-theme') || 'dark';
+      var next = current === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      localStorage.setItem('theme', next);
+      updateThemeBtn(next);
+    }
+
+    function updateThemeBtn(theme) {
+      var btn = document.getElementById('themeToggle');
+      if (!btn) return;
+      if (theme === 'light') {
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg> Dark';
+      } else {
+        btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg> Light';
+      }
+    }
+
+    initTheme();
   </script>
 </body>
 </html>
