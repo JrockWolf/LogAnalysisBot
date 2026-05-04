@@ -471,8 +471,10 @@ async def visualize(
     # Structured charts (top IPs, severity dist, ports, etc.)
     from .charts import generate_structured_charts
     structured_charts: dict = {}
+    structured_charts_light: dict = {}
     if is_text_type and struct_summary.get("structured_pct", 0) > 0:
-        structured_charts = generate_structured_charts(records)
+        structured_charts = generate_structured_charts(records, dark=True)
+        structured_charts_light = generate_structured_charts(records, dark=False)
 
     # Preview: first 200 records showing only populated fields
     _PREVIEW_FIELDS = [
@@ -536,6 +538,18 @@ async def visualize(
         model_performance=model_perf,
         baseline_comparison=baseline_comp,
         error_analysis=error_ana,
+        dark=True,
+    )
+    chart_data_light = generate_chart_data(
+        rows=effective_rows,
+        findings=None,
+        dataset_summary=summary_for_charts,
+        anomaly_result=anomaly_result,
+        statistics=stats,
+        model_performance=model_perf,
+        baseline_comparison=baseline_comp,
+        error_analysis=error_ana,
+        dark=False,
     )
 
     # Optional AI-readable summary
@@ -615,6 +629,7 @@ Use plain language. Avoid excessive jargon. Format with short paragraphs separat
 
     return templates.TemplateResponse(request, "visualize.html", context={
         "chart_data": chart_data,
+        "chart_data_light": chart_data_light,
         "statistics": stats,
         "dataset_summary": summary_for_charts,
         "anomaly_result": anomaly_result,
@@ -634,5 +649,6 @@ Use plain language. Avoid excessive jargon. Format with short paragraphs separat
         "structured_preview": structured_preview,
         "preview_cols": preview_cols,
         "structured_charts": structured_charts,
+        "structured_charts_light": structured_charts_light,
         "is_text_type": is_text_type,
     })

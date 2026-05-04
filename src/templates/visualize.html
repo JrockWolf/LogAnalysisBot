@@ -268,10 +268,10 @@
         <h2>Performance Visualizations</h2>
         <div class="charts-grid">
           {% if chart_data.get('confusion_matrix') %}
-          <div class="chart-card"><img src="{{ chart_data['confusion_matrix'] }}" alt="Confusion Matrix" style="width:100%;border-radius:8px;display:block;" /></div>
+          <div class="chart-card"><img class="chart-img" src="{{ chart_data['confusion_matrix'] }}" data-dark="{{ chart_data['confusion_matrix'] }}" data-light="{{ chart_data_light.get('confusion_matrix', chart_data['confusion_matrix']) }}" alt="Confusion Matrix" style="width:100%;border-radius:8px;display:block;" /></div>
           {% endif %}
           {% if chart_data.get('per_class_metrics') %}
-          <div class="chart-card"><img src="{{ chart_data['per_class_metrics'] }}" alt="Per-Class Metrics" style="width:100%;border-radius:8px;display:block;" /></div>
+          <div class="chart-card"><img class="chart-img" src="{{ chart_data['per_class_metrics'] }}" data-dark="{{ chart_data['per_class_metrics'] }}" data-light="{{ chart_data_light.get('per_class_metrics', chart_data['per_class_metrics']) }}" alt="Per-Class Metrics" style="width:100%;border-radius:8px;display:block;" /></div>
           {% endif %}
         </div>
       </div>
@@ -317,7 +317,7 @@
           {% for key, img_src in chart_data.items() %}
           {% if img_src and key not in ['confusion_matrix', 'per_class_metrics', 'model_vs_baseline', 'fp_by_category', 'fn_by_category'] %}
           <div class="chart-card">
-            <img src="{{ img_src }}" alt="{{ key }}" style="width:100%;border-radius:8px;display:block;" />
+            <img class="chart-img" src="{{ img_src }}" data-dark="{{ img_src }}" data-light="{{ chart_data_light.get(key, img_src) }}" alt="{{ key }}" style="width:100%;border-radius:8px;display:block;" />
           </div>
           {% endif %}
           {% endfor %}
@@ -492,7 +492,7 @@
         {% if chart_data.get('model_vs_baseline') %}
         <div class="charts-grid" style="margin-top:16px">
           <div class="chart-card">
-            <img src="{{ chart_data['model_vs_baseline'] }}" alt="Model vs Baseline" style="width:100%;border-radius:8px;display:block;" />
+            <img class="chart-img" src="{{ chart_data['model_vs_baseline'] }}" data-dark="{{ chart_data['model_vs_baseline'] }}" data-light="{{ chart_data_light.get('model_vs_baseline', chart_data['model_vs_baseline']) }}" alt="Model vs Baseline" style="width:100%;border-radius:8px;display:block;" />
           </div>
         </div>
         {% endif %}
@@ -543,7 +543,7 @@
         {% if chart_data.get('feature_importances') %}
         <div class="charts-grid">
           <div class="chart-card">
-            <img src="{{ chart_data['feature_importances'] }}" alt="Feature Importance" style="width:100%;border-radius:8px;display:block;" />
+            <img class="chart-img" src="{{ chart_data['feature_importances'] }}" data-dark="{{ chart_data['feature_importances'] }}" data-light="{{ chart_data_light.get('feature_importances', chart_data['feature_importances']) }}" alt="Feature Importance" style="width:100%;border-radius:8px;display:block;" />
           </div>
         </div>
         {% endif %}
@@ -633,12 +633,12 @@
         <div class="charts-grid" style="margin-top:16px">
           {% if chart_data.get('fp_by_category') %}
           <div class="chart-card">
-            <img src="{{ chart_data['fp_by_category'] }}" alt="False Positives by Category" style="width:100%;border-radius:8px;display:block;" />
+            <img class="chart-img" src="{{ chart_data['fp_by_category'] }}" data-dark="{{ chart_data['fp_by_category'] }}" data-light="{{ chart_data_light.get('fp_by_category', chart_data['fp_by_category']) }}" alt="False Positives by Category" style="width:100%;border-radius:8px;display:block;" />
           </div>
           {% endif %}
           {% if chart_data.get('fn_by_category') %}
           <div class="chart-card">
-            <img src="{{ chart_data['fn_by_category'] }}" alt="False Negatives by Category" style="width:100%;border-radius:8px;display:block;" />
+            <img class="chart-img" src="{{ chart_data['fn_by_category'] }}" data-dark="{{ chart_data['fn_by_category'] }}" data-light="{{ chart_data_light.get('fn_by_category', chart_data['fn_by_category']) }}" alt="False Negatives by Category" style="width:100%;border-radius:8px;display:block;" />
           </div>
           {% endif %}
         </div>
@@ -836,28 +836,28 @@
       <h3 style="margin-bottom:1rem;">Structured Analysis Charts</h3>
       <div class="chart-grid" style="margin-bottom:2rem;">
         {% if structured_charts.struct_top_src_ips %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_top_src_ips }}" alt="Top Source IPs"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_top_src_ips }}" data-dark="{{ structured_charts.struct_top_src_ips }}" data-light="{{ structured_charts_light.get('struct_top_src_ips', structured_charts.struct_top_src_ips) }}" alt="Top Source IPs"></div>
         {% endif %}
         {% if structured_charts.struct_severity_dist %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_severity_dist }}" alt="Severity Distribution"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_severity_dist }}" data-dark="{{ structured_charts.struct_severity_dist }}" data-light="{{ structured_charts_light.get('struct_severity_dist', structured_charts.struct_severity_dist) }}" alt="Severity Distribution"></div>
         {% endif %}
         {% if structured_charts.struct_actions %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_actions }}" alt="Action Distribution"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_actions }}" data-dark="{{ structured_charts.struct_actions }}" data-light="{{ structured_charts_light.get('struct_actions', structured_charts.struct_actions) }}" alt="Action Distribution"></div>
         {% endif %}
         {% if structured_charts.struct_dst_ports %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_dst_ports }}" alt="Top Dest Ports"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_dst_ports }}" data-dark="{{ structured_charts.struct_dst_ports }}" data-light="{{ structured_charts_light.get('struct_dst_ports', structured_charts.struct_dst_ports) }}" alt="Top Dest Ports"></div>
         {% endif %}
         {% if structured_charts.struct_protocols %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_protocols }}" alt="Protocols"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_protocols }}" data-dark="{{ structured_charts.struct_protocols }}" data-light="{{ structured_charts_light.get('struct_protocols', structured_charts.struct_protocols) }}" alt="Protocols"></div>
         {% endif %}
         {% if structured_charts.struct_http_status %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_http_status }}" alt="HTTP Status Codes"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_http_status }}" data-dark="{{ structured_charts.struct_http_status }}" data-light="{{ structured_charts_light.get('struct_http_status', structured_charts.struct_http_status) }}" alt="HTTP Status Codes"></div>
         {% endif %}
         {% if structured_charts.struct_top_dst_ips %}
-        <div class="chart-card"><img src="{{ structured_charts.struct_top_dst_ips }}" alt="Top Dest IPs"></div>
+        <div class="chart-card"><img class="chart-img" src="{{ structured_charts.struct_top_dst_ips }}" data-dark="{{ structured_charts.struct_top_dst_ips }}" data-light="{{ structured_charts_light.get('struct_top_dst_ips', structured_charts.struct_top_dst_ips) }}" alt="Top Dest IPs"></div>
         {% endif %}
         {% if structured_charts.struct_hourly %}
-        <div class="chart-card chart-card--wide"><img src="{{ structured_charts.struct_hourly }}" alt="Hourly Activity"></div>
+        <div class="chart-card chart-card--wide"><img class="chart-img" src="{{ structured_charts.struct_hourly }}" data-dark="{{ structured_charts.struct_hourly }}" data-light="{{ structured_charts_light.get('struct_hourly', structured_charts.struct_hourly) }}" alt="Hourly Activity"></div>
         {% endif %}
       </div>
       {% endif %}
@@ -956,6 +956,7 @@
       var saved = localStorage.getItem('theme') || 'dark';
       document.documentElement.setAttribute('data-theme', saved);
       updateThemeBtn(saved);
+      updateChartTheme(saved);
     }
 
     function toggleTheme() {
@@ -964,6 +965,13 @@
       document.documentElement.setAttribute('data-theme', next);
       localStorage.setItem('theme', next);
       updateThemeBtn(next);
+      updateChartTheme(next);
+    }
+
+    function updateChartTheme(theme) {
+      document.querySelectorAll('img.chart-img[data-dark]').forEach(function(img) {
+        img.src = theme === 'light' ? (img.dataset.light || img.dataset.dark) : img.dataset.dark;
+      });
     }
 
     function updateThemeBtn(theme) {

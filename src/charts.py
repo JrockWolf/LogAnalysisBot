@@ -16,12 +16,21 @@ matplotlib.use("Agg")  # non-interactive backend — must be set before pyplot i
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ── Theme constants ───────────────────────────────────────────────
-_BG = "#1a1a2e"
-_CARD = "#16213e"
-_TEXT = "#e6e6f2"
-_GRID = "#2a2a4a"
-_ACCENT = "#8b5cf6"
+# ── Theme palettes ───────────────────────────────────────────────
+_DARK_PAL = {
+    "bg": "#1a1a2e", "card": "#16213e", "text": "#e6e6f2",
+    "grid": "#2a2a4a", "accent": "#8b5cf6",
+}
+_LIGHT_PAL = {
+    "bg": "#ffffff", "card": "#f8f9fe", "text": "#1e293b",
+    "grid": "#d1d5db", "accent": "#7c3aed",
+}
+# Backward-compat module-level aliases (dark defaults)
+_BG = _DARK_PAL["bg"]
+_CARD = _DARK_PAL["card"]
+_TEXT = _DARK_PAL["text"]
+_GRID = _DARK_PAL["grid"]
+_ACCENT = _DARK_PAL["accent"]
 
 CHART_COLORS = [
     "#8b5cf6", "#60a5fa", "#f472b6", "#34d399", "#fbbf24",
@@ -48,15 +57,19 @@ def _colors_for(n: int) -> List[str]:
 
 
 def _apply_dark_theme(fig: plt.Figure, ax: plt.Axes) -> None:
-    fig.patch.set_facecolor(_BG)
-    ax.set_facecolor(_CARD)
-    ax.tick_params(colors=_TEXT, labelsize=9)
-    ax.xaxis.label.set_color(_TEXT)
-    ax.yaxis.label.set_color(_TEXT)
-    ax.title.set_color(_TEXT)
+    _apply_theme(fig, ax, _DARK_PAL)
+
+
+def _apply_theme(fig: plt.Figure, ax: plt.Axes, pal: dict) -> None:
+    fig.patch.set_facecolor(pal["bg"])
+    ax.set_facecolor(pal["card"])
+    ax.tick_params(colors=pal["text"], labelsize=9)
+    ax.xaxis.label.set_color(pal["text"])
+    ax.yaxis.label.set_color(pal["text"])
+    ax.title.set_color(pal["text"])
     for spine in ax.spines.values():
-        spine.set_edgecolor(_GRID)
-    ax.grid(color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        spine.set_edgecolor(pal["grid"])
+    ax.grid(color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
 
 
 def _fig_to_uri(fig: plt.Figure) -> str:
@@ -72,8 +85,10 @@ def _fig_to_uri(fig: plt.Figure) -> str:
 
 # ── Chart builders ─────────────────────────────────────────────────
 
-def _hbar(labels: List[str], values: List[float], title: str, xlabel: str) -> str:
+def _hbar(labels: List[str], values: List[float], title: str, xlabel: str, pal: dict | None = None) -> str:
     """Horizontal bar chart — replaces pie/doughnut for categorical distributions."""
+    if pal is None:
+        pal = _DARK_PAL
     n = len(labels)
     fig_h = max(3.0, n * 0.42)
     fig, ax = plt.subplots(figsize=(8, fig_h))
@@ -81,11 +96,11 @@ def _hbar(labels: List[str], values: List[float], title: str, xlabel: str) -> st
     y_pos = np.arange(n)
     bars = ax.barh(y_pos, values, color=colors, height=0.68, edgecolor="none")
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
-    ax.set_xlabel(xlabel, color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.set_yticklabels(labels, fontsize=9, color=pal["text"])
+    ax.set_xlabel(xlabel, color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
     ax.invert_yaxis()
-    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
     ax.yaxis.grid(False)
     # Value annotations
     x_max = max(values) if values else 1
@@ -94,33 +109,37 @@ def _hbar(labels: List[str], values: List[float], title: str, xlabel: str) -> st
             bar.get_width() + x_max * 0.01,
             bar.get_y() + bar.get_height() / 2,
             f"{val:,.0f}" if isinstance(val, float) and val == int(val) else f"{val:,.2f}",
-            va="center", ha="left", color=_TEXT, fontsize=8,
+            va="center", ha="left", color=pal["text"], fontsize=8,
         )
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _vbar(labels: List[str], values: List[float], title: str, ylabel: str) -> str:
+def _vbar(labels: List[str], values: List[float], title: str, ylabel: str, pal: dict | None = None) -> str:
     """Vertical bar chart for short label sets."""
+    if pal is None:
+        pal = _DARK_PAL
     n = len(labels)
     fig, ax = plt.subplots(figsize=(max(6, n * 0.55), 4.5))
     colors = _colors_for(n)
     x_pos = np.arange(n)
     ax.bar(x_pos, values, color=colors, width=0.7, edgecolor="none")
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=9, color=_TEXT)
-    ax.set_ylabel(ylabel, color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.set_xticklabels(labels, rotation=40, ha="right", fontsize=9, color=pal["text"])
+    ax.set_ylabel(ylabel, color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
     ax.xaxis.grid(False)
-    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
-    _apply_dark_theme(fig, ax)
+    ax.yaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _histogram(values: List[float], title: str, xlabel: str, bins: int = 20) -> str:
+def _histogram(values: List[float], title: str, xlabel: str, bins: int = 20, pal: dict | None = None) -> str:
     """Histogram using numpy/sklearn-compatible bin computation."""
+    if pal is None:
+        pal = _DARK_PAL
     arr = np.array(values, dtype=float)
     arr = arr[np.isfinite(arr)]
     if arr.size == 0:
@@ -130,23 +149,25 @@ def _histogram(values: List[float], title: str, xlabel: str, bins: int = 20) -> 
     centers = (edges[:-1] + edges[1:]) / 2
     widths = edges[1:] - edges[:-1]
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.bar(centers, counts, width=widths * 0.9, color=_ACCENT,
-           edgecolor=_GRID, linewidth=0.5)
-    ax.set_xlabel(xlabel, color=_TEXT)
-    ax.set_ylabel("Count", color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
-    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.bar(centers, counts, width=widths * 0.9, color=pal["accent"],
+           edgecolor=pal["grid"], linewidth=0.5)
+    ax.set_xlabel(xlabel, color=pal["text"])
+    ax.set_ylabel("Count", color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
+    ax.yaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
     ax.xaxis.grid(False)
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
 def _stacked_hbar_two(
     val1: float, val2: float, label1: str, label2: str,
-    color1: str, color2: str, title: str,
+    color1: str, color2: str, title: str, pal: dict | None = None,
 ) -> str:
     """Stacked horizontal bar for two-class comparison (e.g. benign vs malicious)."""
+    if pal is None:
+        pal = _DARK_PAL
     total = val1 + val2
     if total <= 0:
         return ""
@@ -154,22 +175,24 @@ def _stacked_hbar_two(
     ax.barh([0], [val1], color=color1, height=0.5, label=label1)
     ax.barh([0], [val2], left=[val1], color=color2, height=0.5, label=label2)
     ax.set_yticks([])
-    ax.set_xlabel("Count", color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.set_xlabel("Count", color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
     pct1, pct2 = 100 * val1 / total, 100 * val2 / total
     ax.text(val1 / 2, 0, f"{label1}\n{pct1:.1f}%",
             ha="center", va="center", color="white", fontsize=9, fontweight="bold")
     ax.text(val1 + val2 / 2, 0, f"{label2}\n{pct2:.1f}%",
             ha="center", va="center", color="white", fontsize=9, fontweight="bold")
-    ax.legend(labelcolor=_TEXT, facecolor=_CARD, edgecolor=_GRID,
+    ax.legend(labelcolor=pal["text"], facecolor=pal["card"], edgecolor=pal["grid"],
               loc="upper right", fontsize=9)
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _feature_importance_plot(importances: Dict[str, float], title: str) -> str:
+def _feature_importance_plot(importances: Dict[str, float], title: str, pal: dict | None = None) -> str:
     """sklearn-style feature importance horizontal bar chart."""
+    if pal is None:
+        pal = _DARK_PAL
     from sklearn.utils.validation import check_consistent_length  # noqa: F401 — validates sklearn available
     items = sorted(importances.items(), key=lambda x: x[1])[-15:]
     if not items:
@@ -182,51 +205,56 @@ def _feature_importance_plot(importances: Dict[str, float], title: str) -> str:
     # Colour by magnitude (sklearn style)
     norm_vals = np.array(vals)
     norm_vals = (norm_vals - norm_vals.min()) / ((norm_vals.max() - norm_vals.min()) + 1e-9)
-    colors = plt.cm.plasma(norm_vals)  # type: ignore[attr-defined]
+    cmap = plt.cm.plasma if pal is _DARK_PAL else plt.cm.viridis  # type: ignore[attr-defined]
+    colors = cmap(norm_vals)
     ax.barh(y_pos, vals, color=colors, height=0.68, edgecolor="none")
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
-    ax.set_xlabel("Importance Score", color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
-    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.set_yticklabels(labels, fontsize=9, color=pal["text"])
+    ax.set_xlabel("Importance Score", color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
+    ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
     ax.yaxis.grid(False)
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _confusion_matrix_heatmap(labels: List[str], matrix: List[List[int]], title: str) -> str:
+def _confusion_matrix_heatmap(labels: List[str], matrix: List[List[int]], title: str, pal: dict | None = None) -> str:
     """Render a confusion matrix as a heatmap."""
+    if pal is None:
+        pal = _DARK_PAL
     n = len(labels)
     if n == 0:
         return ""
     arr = np.array(matrix, dtype=float)
     fig, ax = plt.subplots(figsize=(max(5, n * 0.8 + 2), max(4, n * 0.7 + 1.5)))
-    cmap = plt.cm.Purples  # type: ignore[attr-defined]
+    cmap = plt.cm.Purples if pal is _DARK_PAL else plt.cm.Blues  # type: ignore[attr-defined]
     im = ax.imshow(arr, cmap=cmap, aspect="auto")
     ax.set_xticks(np.arange(n))
     ax.set_yticks(np.arange(n))
     short_labels = [l[:16] for l in labels]
-    ax.set_xticklabels(short_labels, rotation=45, ha="right", fontsize=8, color=_TEXT)
-    ax.set_yticklabels(short_labels, fontsize=8, color=_TEXT)
-    ax.set_xlabel("Predicted", color=_TEXT, fontsize=10)
-    ax.set_ylabel("Actual", color=_TEXT, fontsize=10)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.set_xticklabels(short_labels, rotation=45, ha="right", fontsize=8, color=pal["text"])
+    ax.set_yticklabels(short_labels, fontsize=8, color=pal["text"])
+    ax.set_xlabel("Predicted", color=pal["text"], fontsize=10)
+    ax.set_ylabel("Actual", color=pal["text"], fontsize=10)
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
     # Cell annotations
     thresh = arr.max() / 2.0
     for i in range(n):
         for j in range(n):
             val = int(arr[i, j])
             ax.text(j, i, str(val), ha="center", va="center",
-                    color="white" if arr[i, j] > thresh else _TEXT, fontsize=9)
+                    color="white" if arr[i, j] > thresh else pal["text"], fontsize=9)
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _grouped_bar(groups: List[str], series: Dict[str, List[float]], title: str, ylabel: str) -> str:
+def _grouped_bar(groups: List[str], series: Dict[str, List[float]], title: str, ylabel: str, pal: dict | None = None) -> str:
     """Grouped bar chart for comparing multiple series across groups."""
+    if pal is None:
+        pal = _DARK_PAL
     n_groups = len(groups)
     n_series = len(series)
     if n_groups == 0 or n_series == 0:
@@ -240,21 +268,23 @@ def _grouped_bar(groups: List[str], series: Dict[str, List[float]], title: str, 
         bars = ax.bar(x + offset, vals[:n_groups], width, label=name, color=colors[i], edgecolor="none")
         for bar, val in zip(bars, vals[:n_groups]):
             ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.01,
-                    f"{val:.2f}", ha="center", va="bottom", color=_TEXT, fontsize=7)
+                    f"{val:.2f}", ha="center", va="bottom", color=pal["text"], fontsize=7)
     ax.set_xticks(x)
-    ax.set_xticklabels(groups, fontsize=9, color=_TEXT)
-    ax.set_ylabel(ylabel, color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
-    ax.legend(labelcolor=_TEXT, facecolor=_CARD, edgecolor=_GRID, fontsize=9)
-    ax.yaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.set_xticklabels(groups, fontsize=9, color=pal["text"])
+    ax.set_ylabel(ylabel, color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
+    ax.legend(labelcolor=pal["text"], facecolor=pal["card"], edgecolor=pal["grid"], fontsize=9)
+    ax.yaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
     ax.xaxis.grid(False)
-    _apply_dark_theme(fig, ax)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
-def _error_bar_chart(categories: Dict[str, int], title: str, xlabel: str, color: str = "#ff6b6b") -> str:
+def _error_bar_chart(categories: Dict[str, int], title: str, xlabel: str, color: str = "#ff6b6b", pal: dict | None = None) -> str:
     """Horizontal bar chart for error categories (FP/FN breakdown)."""
+    if pal is None:
+        pal = _DARK_PAL
     if not categories:
         return ""
     items = sorted(categories.items(), key=lambda x: -x[1])[:15]
@@ -265,23 +295,23 @@ def _error_bar_chart(categories: Dict[str, int], title: str, xlabel: str, color:
     y_pos = np.arange(n)
     ax.barh(y_pos, values, color=color, height=0.68, edgecolor="none", alpha=0.85)
     ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=9, color=_TEXT)
-    ax.set_xlabel(xlabel, color=_TEXT)
-    ax.set_title(title, color=_TEXT, fontsize=11, pad=10)
+    ax.set_yticklabels(labels, fontsize=9, color=pal["text"])
+    ax.set_xlabel(xlabel, color=pal["text"])
+    ax.set_title(title, color=pal["text"], fontsize=11, pad=10)
     ax.invert_yaxis()
-    ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+    ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
     ax.yaxis.grid(False)
     for bar, val in zip(ax.patches, values):
         ax.text(bar.get_width() + max(values) * 0.01, bar.get_y() + bar.get_height() / 2,
-                f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
-    _apply_dark_theme(fig, ax)
+                f"{val:,.0f}", va="center", ha="left", color=pal["text"], fontsize=8)
+    _apply_theme(fig, ax, pal)
     fig.tight_layout()
     return _fig_to_uri(fig)
 
 
 # ── Structured log charts ──────────────────────────────────────────────────
 
-def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
+def generate_structured_charts(records: List[Dict[str, Any]], dark: bool = True) -> Dict[str, str]:
     """Generate charts specifically for structurized text/syslog records.
 
     Produces: top source IPs, severity distribution, protocol distribution,
@@ -289,6 +319,7 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
     hourly activity.
     Returns a dict of chart_id → base64 PNG data URI.
     """
+    pal = _DARK_PAL if dark else _LIGHT_PAL
     charts: Dict[str, str] = {}
     if not records:
         return charts
@@ -349,7 +380,7 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
     if src_ips:
         top = sorted(src_ips.items(), key=lambda x: -x[1])[:15]
         uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
-                    "Top Source IPs", "Events")
+                    "Top Source IPs", "Events", pal=pal)
         if uri:
             charts["struct_top_src_ips"] = uri
 
@@ -357,7 +388,7 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
     if dst_ips:
         top = sorted(dst_ips.items(), key=lambda x: -x[1])[:10]
         uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
-                    "Top Destination IPs", "Events")
+                    "Top Destination IPs", "Events", pal=pal)
         if uri:
             charts["struct_top_dst_ips"] = uri
 
@@ -372,23 +403,23 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
             "error": "#f97316", "warning": "#fbbf24", "warn": "#fbbf24",
             "notice": "#60a5fa", "info": "#34d399", "debug": "#a1a1aa", "unknown": "#6b7280",
         }
-        colors = [_SEV_COLORS.get(k, _ACCENT) for k, _ in ordered]
+        colors = [_SEV_COLORS.get(k, pal["accent"]) for k, _ in ordered]
         n = len(ordered)
         fig, ax = plt.subplots(figsize=(7, max(2.5, n * 0.38)))
         y = np.arange(n)
         vals = [float(v) for _, v in ordered]
         ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
         ax.set_yticks(y)
-        ax.set_yticklabels([k for k, _ in ordered], fontsize=9, color=_TEXT)
-        ax.set_xlabel("Events", color=_TEXT)
-        ax.set_title("Severity Distribution", color=_TEXT, fontsize=11, pad=10)
+        ax.set_yticklabels([k for k, _ in ordered], fontsize=9, color=pal["text"])
+        ax.set_xlabel("Events", color=pal["text"])
+        ax.set_title("Severity Distribution", color=pal["text"], fontsize=11, pad=10)
         ax.invert_yaxis()
-        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
         ax.yaxis.grid(False)
         for bar, val in zip(ax.patches, vals):
             ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
-                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
-        _apply_dark_theme(fig, ax)
+                    f"{val:,.0f}", va="center", ha="left", color=pal["text"], fontsize=8)
+        _apply_theme(fig, ax, pal)
         fig.tight_layout()
         charts["struct_severity_dist"] = _fig_to_uri(fig)
 
@@ -396,7 +427,7 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
     if protocols:
         top = sorted(protocols.items(), key=lambda x: -x[1])[:12]
         uri = _hbar([t[0] for t in top], [float(t[1]) for t in top],
-                    "Protocol Distribution", "Events")
+                    "Protocol Distribution", "Events", pal=pal)
         if uri:
             charts["struct_protocols"] = uri
 
@@ -406,23 +437,23 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
         _ACT_COLORS = {"DROP": "#ef4444", "REJECT": "#f97316", "BLOCK": "#f97316",
                        "DRP": "#ef4444", "ACCEPT": "#34d399", "ALLOW": "#34d399",
                        "ALERT": "#fbbf24"}
-        colors = [_ACT_COLORS.get(a, _ACCENT) for a, _ in top]
+        colors = [_ACT_COLORS.get(a, pal["accent"]) for a, _ in top]
         n = len(top)
         fig, ax = plt.subplots(figsize=(7, max(2.0, n * 0.38)))
         y = np.arange(n)
         vals = [float(v) for _, v in top]
         ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
         ax.set_yticks(y)
-        ax.set_yticklabels([a for a, _ in top], fontsize=9, color=_TEXT)
-        ax.set_xlabel("Count", color=_TEXT)
-        ax.set_title("Firewall / Action Counts", color=_TEXT, fontsize=11, pad=10)
+        ax.set_yticklabels([a for a, _ in top], fontsize=9, color=pal["text"])
+        ax.set_xlabel("Count", color=pal["text"])
+        ax.set_title("Firewall / Action Counts", color=pal["text"], fontsize=11, pad=10)
         ax.invert_yaxis()
-        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
         ax.yaxis.grid(False)
         for bar, val in zip(ax.patches, vals):
             ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
-                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
-        _apply_dark_theme(fig, ax)
+                    f"{val:,.0f}", va="center", ha="left", color=pal["text"], fontsize=8)
+        _apply_theme(fig, ax, pal)
         fig.tight_layout()
         charts["struct_actions"] = _fig_to_uri(fig)
 
@@ -435,7 +466,7 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
                        445: "SMB(445)", 3306: "MySQL(3306)", 3389: "RDP(3389)",
                        5432: "Postgres(5432)", 6379: "Redis(6379)", 8080: "HTTP-alt(8080)"}
         labels = [_PORT_NAMES.get(p, str(p)) for p, _ in top]
-        uri = _hbar(labels, [float(v) for _, v in top], "Top Destination Ports", "Events")
+        uri = _hbar(labels, [float(v) for _, v in top], "Top Destination Ports", "Events", pal=pal)
         if uri:
             charts["struct_dst_ports"] = uri
 
@@ -448,23 +479,23 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
         top = sorted(grouped.items(), key=lambda x: x[0])
         _SC_COLORS = {"1xx": "#60a5fa", "2xx": "#34d399", "3xx": "#fbbf24",
                       "4xx": "#f97316", "5xx": "#ef4444"}
-        colors = [_SC_COLORS.get(g, _ACCENT) for g, _ in top]
+        colors = [_SC_COLORS.get(g, pal["accent"]) for g, _ in top]
         n = len(top)
         fig, ax = plt.subplots(figsize=(6, max(2.0, n * 0.42)))
         y = np.arange(n)
         vals = [float(v) for _, v in top]
         ax.barh(y, vals, color=colors, height=0.65, edgecolor="none", alpha=0.9)
         ax.set_yticks(y)
-        ax.set_yticklabels([g for g, _ in top], fontsize=9, color=_TEXT)
-        ax.set_xlabel("Count", color=_TEXT)
-        ax.set_title("HTTP Status Codes", color=_TEXT, fontsize=11, pad=10)
+        ax.set_yticklabels([g for g, _ in top], fontsize=9, color=pal["text"])
+        ax.set_xlabel("Count", color=pal["text"])
+        ax.set_title("HTTP Status Codes", color=pal["text"], fontsize=11, pad=10)
         ax.invert_yaxis()
-        ax.xaxis.grid(True, color=_GRID, linestyle="--", linewidth=0.5, alpha=0.6)
+        ax.xaxis.grid(True, color=pal["grid"], linestyle="--", linewidth=0.5, alpha=0.6)
         ax.yaxis.grid(False)
         for bar, val in zip(ax.patches, vals):
             ax.text(bar.get_width() + max(vals) * 0.01, bar.get_y() + bar.get_height() / 2,
-                    f"{val:,.0f}", va="center", ha="left", color=_TEXT, fontsize=8)
-        _apply_dark_theme(fig, ax)
+                    f"{val:,.0f}", va="center", ha="left", color=pal["text"], fontsize=8)
+        _apply_theme(fig, ax, pal)
         fig.tight_layout()
         charts["struct_http_status"] = _fig_to_uri(fig)
 
@@ -476,14 +507,14 @@ def generate_structured_charts(records: List[Dict[str, Any]]) -> Dict[str, str]:
                 counts[h] += 1
         fig, ax = plt.subplots(figsize=(9, 2.8))
         x = np.arange(24)
-        bar_colors = [("#ef4444" if (c == max(counts) and max(counts) > 0) else _ACCENT)
+        bar_colors = [("#ef4444" if (c == max(counts) and max(counts) > 0) else pal["accent"])
                       for c in counts]
         ax.bar(x, counts, color=bar_colors, width=0.8, edgecolor="none", alpha=0.88)
         ax.set_xticks(x)
-        ax.set_xticklabels([f"{h:02d}h" for h in range(24)], fontsize=7, rotation=45, color=_TEXT)
-        ax.set_ylabel("Events", color=_TEXT)
-        ax.set_title("Hourly Activity", color=_TEXT, fontsize=11, pad=10)
-        _apply_dark_theme(fig, ax)
+        ax.set_xticklabels([f"{h:02d}h" for h in range(24)], fontsize=7, rotation=45, color=pal["text"])
+        ax.set_ylabel("Events", color=pal["text"])
+        ax.set_title("Hourly Activity", color=pal["text"], fontsize=11, pad=10)
+        _apply_theme(fig, ax, pal)
         fig.tight_layout()
         charts["struct_hourly"] = _fig_to_uri(fig)
 
@@ -499,12 +530,14 @@ def generate_chart_data(
     model_performance: Dict[str, Any] | None = None,
     baseline_comparison: Dict[str, Any] | None = None,
     error_analysis: Dict[str, Any] | None = None,
+    dark: bool = True,
 ) -> Dict[str, str]:
     """Return a dict of chart image data URIs keyed by chart id.
 
     Each value is a base64-encoded PNG data URI suitable for an <img> src.
     Accepts data from any source type and generates appropriate matplotlib charts.
     """
+    pal = _DARK_PAL if dark else _LIGHT_PAL
     charts: Dict[str, str] = {}
 
     # ── Dataset overview charts ───────────────────────────────────────
@@ -514,7 +547,7 @@ def generate_chart_data(
         if cats:
             items = sorted(cats.items(), key=lambda x: -x[1])
             uri = _hbar([i[0] for i in items], [float(i[1]) for i in items],
-                        "Category Distribution", "Count")
+                        "Category Distribution", "Count", pal=pal)
             if uri:
                 charts["category_distribution"] = uri
 
@@ -526,6 +559,7 @@ def generate_chart_data(
                 "Benign", "Malicious",
                 "#34d399", "#ff6b6b",
                 "Benign vs Malicious Traffic",
+                pal=pal,
             )
             if uri:
                 charts["benign_vs_malicious"] = uri
@@ -535,7 +569,7 @@ def generate_chart_data(
         if protocols:
             items = sorted(protocols.items(), key=lambda x: -x[1])[:15]
             uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
-                        "Protocol Distribution", "Packet Count")
+                        "Protocol Distribution", "Packet Count", pal=pal)
             if uri:
                 charts["protocol_distribution"] = uri
 
@@ -544,7 +578,7 @@ def generate_chart_data(
         if top_src:
             items = sorted(top_src.items(), key=lambda x: -x[1])[:15]
             uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
-                        "Top Source IPs", "Packet Count")
+                        "Top Source IPs", "Packet Count", pal=pal)
             if uri:
                 charts["top_source_ips"] = uri
 
@@ -553,7 +587,7 @@ def generate_chart_data(
         if top_dst:
             items = sorted(top_dst.items(), key=lambda x: -x[1])[:15]
             uri = _hbar([p[0] for p in items], [float(p[1]) for p in items],
-                        "Top Destination IPs", "Packet Count")
+                        "Top Destination IPs", "Packet Count", pal=pal)
             if uri:
                 charts["top_dest_ips"] = uri
 
@@ -562,7 +596,7 @@ def generate_chart_data(
         if rtypes and len(rtypes) > 1:
             items = sorted(rtypes.items(), key=lambda x: -x[1])
             uri = _hbar([i[0] for i in items], [float(i[1]) for i in items],
-                        "Record Types", "Count")
+                        "Record Types", "Count", pal=pal)
             if uri:
                 charts["record_types"] = uri
 
@@ -590,6 +624,7 @@ def generate_chart_data(
                 [f"Port {p[0]}" for p in top_ports],
                 [float(p[1]) for p in top_ports],
                 "Top Destination Ports", "Flow Count",
+                pal=pal,
             )
             if uri:
                 charts["top_ports"] = uri
@@ -606,14 +641,14 @@ def generate_chart_data(
             }
             if attack_vals:
                 s = sorted(attack_vals.items(), key=lambda x: -x[1])
-                uri = _hbar([c[0] for c in s], [c[1] for c in s], title, xlabel)
+                uri = _hbar([c[0] for c in s], [c[1] for c in s], title, xlabel, pal=pal)
                 if uri:
                     charts[metric_key] = uri
 
         if flow_count:
             sf = sorted(flow_count.items(), key=lambda x: -x[1])
             uri = _hbar([c[0] for c in sf], [float(c[1]) for c in sf],
-                        "Flow Count by Category", "Number of Flows")
+                        "Flow Count by Category", "Number of Flows", pal=pal)
             if uri:
                 charts["flows_per_category"] = uri
 
@@ -635,13 +670,14 @@ def generate_chart_data(
                 [f"Port {p[0]}" for p in top_ports_pcap],
                 [float(p[1]) for p in top_ports_pcap],
                 "Top Destination Ports", "Packet Count",
+                pal=pal,
             )
             if uri:
                 charts["top_ports"] = uri
 
         # Packet size distribution — real histogram via matplotlib/numpy
         if pkt_sizes:
-            uri = _histogram(pkt_sizes, "Packet Size Distribution", "Packet Size (bytes)", bins=20)
+            uri = _histogram(pkt_sizes, "Packet Size Distribution", "Packet Size (bytes)", bins=20, pal=pal)
             if uri:
                 charts["packet_sizes"] = uri
 
@@ -654,7 +690,7 @@ def generate_chart_data(
         if flag_counts:
             top_flags = sorted(flag_counts.items(), key=lambda x: -x[1])[:10]
             uri = _hbar([f[0] for f in top_flags], [float(f[1]) for f in top_flags],
-                        "TCP Flag Distribution", "Count")
+                        "TCP Flag Distribution", "Count", pal=pal)
             if uri:
                 charts["tcp_flags"] = uri
 
@@ -669,19 +705,20 @@ def generate_chart_data(
                 "Normal", "Anomalous",
                 "#34d399", "#ff6b6b",
                 "Normal vs Anomalous Records",
+                pal=pal,
             )
             if uri:
                 charts["anomaly_split"] = uri
 
         importances = anomaly_result.get("feature_importances", {})
         if importances:
-            uri = _feature_importance_plot(importances, "Feature Importance (Anomaly Detection)")
+            uri = _feature_importance_plot(importances, "Feature Importance (Anomaly Detection)", pal=pal)
             if uri:
                 charts["feature_importances"] = uri
 
         scores = anomaly_result.get("anomaly_scores", [])
         if scores:
-            uri = _histogram(scores, "Anomaly Score Distribution", "Anomaly Score", bins=20)
+            uri = _histogram(scores, "Anomaly Score Distribution", "Anomaly Score", bins=20, pal=pal)
             if uri:
                 charts["anomaly_score_dist"] = uri
 
@@ -696,7 +733,7 @@ def generate_chart_data(
             )[:12]
             if by_std:
                 uri = _hbar([b[0] for b in by_std], [b[1] for b in by_std],
-                            "Feature Variability (Std Dev)", "Standard Deviation")
+                            "Feature Variability (Std Dev)", "Standard Deviation", pal=pal)
                 if uri:
                     charts["feature_variability"] = uri
 
@@ -707,7 +744,7 @@ def generate_chart_data(
             )[:12]
             if by_mean:
                 uri = _hbar([b[0] for b in by_mean], [b[1] for b in by_mean],
-                            "Feature Mean Values", "Mean")
+                            "Feature Mean Values", "Mean", pal=pal)
                 if uri:
                     charts["feature_means"] = uri
 
@@ -743,7 +780,7 @@ def generate_chart_data(
         if finding_cats:
             sc = sorted(finding_cats.items(), key=lambda x: -x[1])
             uri = _hbar([c[0] for c in sc], [float(c[1]) for c in sc],
-                        "Findings by Category", "Count")
+                        "Findings by Category", "Count", pal=pal)
             if uri:
                 charts["findings_by_type"] = uri
 
@@ -764,6 +801,7 @@ def generate_chart_data(
                 [float(i[1]) for i in sev_items],
                 "Findings Severity Breakdown",
                 "Count",
+                pal=pal,
             )
             if uri:
                 charts["findings_severity"] = uri
@@ -774,7 +812,7 @@ def generate_chart_data(
         cm = model_performance.get("confusion_matrix", {})
         if cm.get("labels") and cm.get("matrix"):
             uri = _confusion_matrix_heatmap(cm["labels"], cm["matrix"],
-                                            "Confusion Matrix")
+                                            "Confusion Matrix", pal=pal)
             if uri:
                 charts["confusion_matrix"] = uri
 
@@ -790,6 +828,7 @@ def generate_chart_data(
                 {"Precision": prec_vals, "Recall": rec_vals, "F1": f1_vals},
                 "Per-Class Performance Metrics",
                 "Score",
+                pal=pal,
             )
             if uri:
                 charts["per_class_metrics"] = uri
@@ -810,6 +849,7 @@ def generate_chart_data(
                 {"Isolation Forest": if_vals, "Z-Score Baseline": zs_vals},
                 "Model vs Baseline Performance",
                 "Score",
+                pal=pal,
             )
             if uri:
                 charts["model_vs_baseline"] = uri
@@ -818,7 +858,7 @@ def generate_chart_data(
             labels = ["Isolation Forest", "Z-Score Baseline"]
             counts = [float(iforest.get("anomaly_count", 0)), float(zscore.get("anomaly_count", 0))]
             if any(c > 0 for c in counts):
-                uri = _vbar(labels, counts, "Anomalies Detected: Model vs Baseline", "Count")
+                uri = _vbar(labels, counts, "Anomalies Detected: Model vs Baseline", "Count", pal=pal)
                 if uri:
                     charts["model_vs_baseline"] = uri
 
@@ -827,11 +867,11 @@ def generate_chart_data(
         fp_cats = error_analysis.get("false_positives", {}).get("by_category", {})
         fn_cats = error_analysis.get("false_negatives", {}).get("by_category", {})
         if fp_cats:
-            uri = _error_bar_chart(fp_cats, "False Positives by Category", "Count", "#fbbf24")
+            uri = _error_bar_chart(fp_cats, "False Positives by Category", "Count", "#fbbf24", pal=pal)
             if uri:
                 charts["fp_by_category"] = uri
         if fn_cats:
-            uri = _error_bar_chart(fn_cats, "False Negatives by Category", "Count", "#ff6b6b")
+            uri = _error_bar_chart(fn_cats, "False Negatives by Category", "Count", "#ff6b6b", pal=pal)
             if uri:
                 charts["fn_by_category"] = uri
 
