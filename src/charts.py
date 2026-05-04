@@ -75,7 +75,7 @@ def _apply_theme(fig: plt.Figure, ax: plt.Axes, pal: dict) -> None:
 def _fig_to_uri(fig: plt.Figure) -> str:
     """Save figure to a base64-encoded PNG data URI and close it."""
     buf = io.BytesIO()
-    fig.savefig(buf, format="png", bbox_inches="tight", dpi=96,
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=150,
                 facecolor=fig.get_facecolor())
     plt.close(fig)
     buf.seek(0)
