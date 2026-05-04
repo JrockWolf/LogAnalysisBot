@@ -1,48 +1,53 @@
-openai>=0.27.0
+# ── Core web + LLM ───────────────────────────────────────────────────────────
+# Python 3.9–3.13 fully supported; 3.14+ works for web-only mode (no desktop).
+openai>=1.0.0
 requests>=2.28.0
-transformers>=4.30.0
-torch>=1.13.0
 typer[all]>=0.9.0
-pydantic>=1.10.0
+pydantic>=2.0.0
 pytest>=7.0.0
 python-dotenv>=1.0.0
 perplexityai>=0.13.0
 google-generativeai>=0.3.0
 
+# ── Web server ────────────────────────────────────────────────────────────────
 fastapi>=0.95.0
 uvicorn[standard]>=0.22.0
 python-multipart>=0.0.6
 jinja2>=3.1.0
 
-# Data science pipeline
+# ── Data science pipeline ─────────────────────────────────────────────────────
 scikit-learn>=1.3.0
 numpy>=1.24.0
 matplotlib>=3.7.0
 scipy>=1.11.0
 
-# PCAP parsing
+# ── PCAP parsing ──────────────────────────────────────────────────────────────
 scapy>=2.5.0
 
-# Desktop app
-pywebview>=5.0.0
-pyinstaller>=6.0.0
+# ── ML / deep learning (optional — large download, comment out if unneeded) ──
+# Supports Python 3.9–3.12 on all platforms; Python 3.13+ on Linux/macOS only.
+# transformers>=4.30.0
+# torch>=1.13.0
+
+# ── Desktop app (Python 3.9–3.12 only — pythonnet has no 3.13+ wheel yet) ───
+# Uncomment this block to enable the native desktop window.
+# pywebview>=5.0.0
+# pyinstaller>=6.0.0
 
 # pywebview GUI backend — install the one for your OS:
-#
 #   Linux  (GTK): sudo apt install python3-gi gir1.2-webkit2-4.0
-#   Linux  (Qt):  pip install PyQt6 PyQt6-WebEngine qtpy        ← already below
-#   macOS:        pip install pyobjc-framework-WebKit            ← already below
-#   Windows:      install WebView2 Runtime (ships with Win10/11, or download from Microsoft)
-#                 pip install pythonnet                          ← already below
+#   Linux  (Qt):  pip install PyQt6 PyQt6-WebEngine qtpy
+#   macOS:        pip install pyobjc-framework-WebKit pyobjc-framework-Cocoa
+#   Windows:      WebView2 Runtime (built into Win10/11) + pip install pythonnet
 
 # Qt backend (Linux)
-PyQt6>=6.7.0; sys_platform == "linux"
-PyQt6-WebEngine>=6.7.0; sys_platform == "linux"
-qtpy>=2.4.0; sys_platform == "linux"
+# PyQt6>=6.7.0; sys_platform == "linux"
+# PyQt6-WebEngine>=6.7.0; sys_platform == "linux"
+# qtpy>=2.4.0; sys_platform == "linux"
 
 # WebKit backend (macOS)
-pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
-pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
+# pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
+# pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
 
-# WinForms/EdgeChromium backend (Windows)
-pythonnet>=3.0.0; sys_platform == "win32"
+# WinForms/EdgeChromium backend (Windows, Python <=3.12 only)
+# pythonnet>=3.0.0; sys_platform == "win32" and python_version < "3.13"
