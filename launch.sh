@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Launch LogAnalysisBot
-# - Desktop mode: requires Python 3.9-3.12 (pythonnet limitation on Windows)
-# - Web mode:     works with Python 3.9+
+# Launch LogAnalysisBot — desktop mode preferred, web mode fallback
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -55,7 +53,7 @@ for CMD in python3 python; do
 done
 
 if [[ -n "$FALLBACK" ]]; then
-    echo "[launch] WARNING: No Python 3.9-3.12 found. Desktop window unavailable."
+    echo "[launch] WARNING: Desktop deps unavailable in this environment."
     echo "[launch] Falling back to web mode at http://localhost:8000"
     if [[ ! -x "$SCRIPT_DIR/.venv/bin/python" ]]; then
         "$FALLBACK" -m venv "$SCRIPT_DIR/.venv"
@@ -65,6 +63,6 @@ if [[ -n "$FALLBACK" ]]; then
 fi
 
 echo "ERROR: No Python installation found."
-echo "Install Python 3.9-3.12 from https://www.python.org/downloads/"
+echo "Install Python from https://www.python.org/downloads/"
 exit 1
 

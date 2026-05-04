@@ -1,4 +1,4 @@
-# Desktop app extras — requires Python 3.9–3.12 (pythonnet has no 3.13+ wheel)
+# Desktop app extras
 # Install with: pip install -r requirements-desktop.txt
 -r requirements.txt
 
@@ -14,5 +14,5 @@ qtpy>=2.4.0; sys_platform == "linux"
 pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
 
-# WinForms/EdgeChromium backend (Windows, Python <=3.12 only)
-pythonnet>=3.0.0; sys_platform == "win32" and python_version < "3.13"
+# WinForms/EdgeChromium backend (Windows)
+pythonnet>=3.0.0; sys_platform == "win32"

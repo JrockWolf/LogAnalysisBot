@@ -1,7 +1,5 @@
 @echo off
-:: Launch LogAnalysisBot
-:: - Desktop mode: requires Python 3.9-3.12 (pythonnet limitation)
-:: - Web mode:     works with Python 3.9+
+:: Launch LogAnalysisBot — desktop mode preferred, web mode fallback
 SET SCRIPT_DIR=%~dp0
 
 :: ── 1. Try the .venv312 desktop venv first (Python 3.12, all features) ──────
@@ -12,8 +10,8 @@ IF EXIST "%VENV312%" (
     exit /b %ERRORLEVEL%
 )
 
-:: ── 2. Search py launcher for a compatible version (3.9 through 3.12) ───────
-FOR %%V IN (3.12 3.11 3.10 3.9) DO (
+:: ── 2. Search py launcher for any supported version (3.14 down to 3.9) ──────────
+FOR %%V IN (3.14 3.13 3.12 3.11 3.10 3.9) DO (
     py -%%V --version >nul 2>&1
     IF NOT ERRORLEVEL 1 (
         echo [launch] Found Python %%V via py launcher
@@ -30,7 +28,7 @@ FOR %%V IN (3.12 3.11 3.10 3.9) DO (
 :: ── 3. Fall back to any Python on PATH (web-only, no desktop window) ─────────
 python --version >nul 2>&1
 IF NOT ERRORLEVEL 1 (
-    echo [launch] WARNING: No Python 3.9-3.12 found. Desktop window unavailable.
+    echo [launch] WARNING: Desktop deps unavailable in this environment.
     echo [launch] Falling back to web mode on http://localhost:8000
     IF NOT EXIST "%SCRIPT_DIR%.venv\Scripts\python.exe" (
         python -m venv "%SCRIPT_DIR%.venv"
@@ -41,7 +39,7 @@ IF NOT ERRORLEVEL 1 (
 )
 
 echo ERROR: No Python installation found.
-echo Install Python 3.9-3.12 from https://www.python.org/downloads/
+echo Install Python from https://www.python.org/downloads/
 pause
 exit /b 1
 

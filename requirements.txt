@@ -1,5 +1,5 @@
 # ── Core web + LLM ───────────────────────────────────────────────────────────
-# Python 3.9–3.13 fully supported; 3.14+ works for web-only mode (no desktop).
+# Python 3.9+ supported.
 openai>=1.0.0
 requests>=2.28.0
 typer[all]>=0.9.0
@@ -25,12 +25,10 @@ scipy>=1.11.0
 scapy>=2.5.0
 
 # ── ML / deep learning (optional — large download, comment out if unneeded) ──
-# Supports Python 3.9–3.12 on all platforms; Python 3.13+ on Linux/macOS only.
 # transformers>=4.30.0
 # torch>=1.13.0
 
-# ── Desktop app (Python 3.9–3.12 only — pythonnet has no 3.13+ wheel yet) ───
-# Uncomment this block to enable the native desktop window.
+# ── Desktop app — uncomment to enable the native desktop window ──────────────
 # pywebview>=5.0.0
 # pyinstaller>=6.0.0
 
@@ -49,5 +47,5 @@ scapy>=2.5.0
 # pyobjc-framework-WebKit>=9.0; sys_platform == "darwin"
 # pyobjc-framework-Cocoa>=9.0; sys_platform == "darwin"
 
-# WinForms/EdgeChromium backend (Windows, Python <=3.12 only)
-# pythonnet>=3.0.0; sys_platform == "win32" and python_version < "3.13"
+# WinForms/EdgeChromium backend (Windows)
+# pythonnet>=3.0.0; sys_platform == "win32"
